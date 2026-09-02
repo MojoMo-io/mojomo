@@ -5,6 +5,7 @@ import * as dotenv from 'dotenv';
 import * as db from './services/db';
 import avatarRoutes from './routes/avatars';
 import conversationRoutes from './routes/conversations';
+import specialistRoutes from './routes/specialists';
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.get('/health', async (req, res) => {
 // API routes
 app.use('/api', avatarRoutes);
 app.use('/api', conversationRoutes);
+app.use('/api', specialistRoutes);
 
 // 404 handler
 app.use((req, res) => {

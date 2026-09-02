@@ -7,6 +7,7 @@ import avatarRoutes from './routes/avatars';
 import conversationRoutes from './routes/conversations';
 import specialistRoutes from './routes/specialists';
 import payoutRoutes from './routes/payouts';
+import messageRoutes from './routes/messages';
 
 dotenv.config();
 
@@ -39,6 +40,7 @@ app.use('/api', avatarRoutes);
 app.use('/api', conversationRoutes);
 app.use('/api', specialistRoutes);
 app.use('/api', payoutRoutes);
+app.use('/api', messageRoutes);
 
 // 404 handler
 app.use((req, res) => {

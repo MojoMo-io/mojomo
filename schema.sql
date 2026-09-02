@@ -44,16 +44,8 @@ CREATE INDEX idx_conversations_target ON conversations(target_avatar_id);
 CREATE INDEX idx_conversations_status ON conversations(status);
 CREATE INDEX idx_conversations_created ON conversations(created_at DESC);
 
--- Constraint: ownership_ledger must sum to 100% (±0.1% tolerance for rounding)
-ALTER TABLE conversations
-ADD CONSTRAINT ownership_sum_valid
-CHECK (
-  ABS(
-    (SELECT SUM((value->>'ownership_pct')::NUMERIC)
-     FROM jsonb_each(ownership_ledger))
-    - 100
-  ) < 0.1
-);
+-- Note: ownership_ledger validation is enforced at application level
+-- (PostgreSQL check constraints cannot use subqueries)
 
 -- Conversation messages: all messages in a conversation
 CREATE TABLE conversation_messages (

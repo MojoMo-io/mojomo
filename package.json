@@ -1,0 +1,36 @@
+{
+  "name": "mojomo",
+  "version": "0.1.0",
+  "description": "Avatar platform with shared token conversations, vesting, and idea extraction",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "db:migrate": "tsx src/scripts/migrate.ts",
+    "db:seed": "tsx src/scripts/seed.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.0",
+    "express": "^4.18.0",
+    "pg": "^8.10.0",
+    "telegraf": "^4.14.0",
+    "uuid": "^9.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.0",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.10.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.1.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.0.0"
+  }
+}

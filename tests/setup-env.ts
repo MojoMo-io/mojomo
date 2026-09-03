@@ -5,3 +5,5 @@ process.env.DB_NAME = 'mojomo_test';
 process.env.NODE_ENV = 'test';
 // Specialist joins are feature-flagged off in production (roadmap item); tests exercise the flow.
 process.env.SPECIALISTS_ENABLED = 'true';
+// Token economy is disabled in the first build; the tokenomics suites exercise it with the flag on.
+process.env.TOKENS_ENABLED = 'true';

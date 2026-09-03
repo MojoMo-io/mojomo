@@ -9,6 +9,29 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
   automatically when `idea_score > 0.65`; idea repository with maturity stages.
 - **Phase 3 (two-party scope)** — vesting boundary tests, atomic payouts (no double-spend), vesting frozen at
   `ended_at`, ended-conversation guards (409), scheduled 90-day dormancy sweep, load test.
+- **Phase 4 (first-build scope)** — gated idea maturity (refinements + confidence per stage), refinement history,
+  surfacing event, E2E journey; token economy switched off; redesigned mojomo.io.
+
+## Deferred: the token economy
+**Decision (2026-09-03):** the first build ships **without tokens** — avatars, two-party conversations, Claude
+reflection, idea extraction and gated idea maturity. "Get the model right first"; the economy comes after.
+
+What exists already (kept, tested with `TOKENS_ENABLED=true` in `tests/setup-env.ts`, disabled by default):
+- Genesis 50/50 allocation, 30-day linear vesting, payout validation net of prior payouts (atomic, no double-spend),
+  forfeiture on early end with vesting frozen at `ended_at`, ownership ledger and token ledger, dilution model.
+- Endpoints now answering **403 + roadmap note** when the flag is off: `/conversations/:id/ownership`,
+  `/conversations/:id/avatars/:id/ownership|vesting`, `/payouts/*`, `/conversations/:id/payouts`,
+  `/conversations/:id/forfeiture-status`, `/conversations/:id/specialists`.
+- Token fields (`total_tokens`, `ownership_ledger`, `vested_pct`, `forfeited_tokens`, …) are stripped from all
+  responses while the flag is off; `POST /conversations` no longer requires `total_tokens` (an internal placeholder
+  keeps ledger invariants intact).
+- **Idea payouts** ("idea surfacing generates payouts" in the spec) are undefined in the spec beyond the phrase.
+  Surfacing currently emits an `idea_surfaced` event carrying `payout: roadmap`. Open decisions recorded in the
+  2026-09-03 session: recipient (split creator/co-creator by ownership vs. extractor only) and funding
+  (platform reward = base x confidence vs. minting into the conversation pool).
+
+To enable later: `TOKENS_ENABLED=true` in `/opt/mojomo/.env`, restart, and make `total_tokens` part of the
+conversation-creation UI.
 
 ## Deferred: specialists & late joiners
 **Decision (2026-09-03):** launch with a creator and co-creator only. Specialists / late joiners move to the roadmap.
@@ -26,6 +49,6 @@ vesting start for late joiners (spec uses conversation `created_at` for everyone
 concurrent-join load testing, and whether specialists may end a conversation.
 
 ## Next
-- **Phase 4** — idea maturity progression -> payouts ("idea surfacing generates payouts"), E2E suite.
+- **Token economy** — enable `TOKENS_ENABLED`, define idea payouts (see above), UI for allocation/vesting/payouts.
 - **Phase 5** — Stripe, `llms.txt` agent discoverability, Prometheus/Grafana, OWASP/security tests, GA.
 - Housekeeping — branch coverage (payouts/forfeiture), Playwright E2E, rotate the Claude key shared with Premonitia.

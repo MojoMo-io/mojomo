@@ -119,6 +119,9 @@ describe('processJob end-to-end (mocked Claude, real DB)', () => {
     const ideaId = arr[0].id;
     const one = await request(app).get(`/api/conversations/${convId}/ideas/${ideaId}`).expect(200);
     expect(JSON.stringify(one.body)).toContain('Replace the reserve pool');
+    // Phase 4 gates: advancing needs >= 1 refinement (and confidence >= 0.65; this idea has 0.82)
+    await request(app).patch(`/api/conversations/${convId}/ideas/${ideaId}`).send({ maturity_stage: 'exploring' }).expect(409);
+    await request(app).post(`/api/conversations/${convId}/ideas/${ideaId}/refinements`).send({ avatar_id: a1, note: 'first pass' }).expect(201);
     const upd = await request(app).patch(`/api/conversations/${convId}/ideas/${ideaId}`).send({ maturity_stage: 'exploring' }).expect(200);
     expect(JSON.stringify(upd.body)).toContain('exploring');
     await request(app).get(`/api/conversations/${convId}/ideas-by-maturity/exploring`).expect(200);

@@ -232,3 +232,20 @@ regressed the Phase 1 forfeiture authorization. They are preserved at tag
 - DB pool: `DB_POOL_MAX` (default 20) and `DB_CONNECT_TIMEOUT_MS` (default 10000) so pool starvation fails fast.
   Ownership/vesting reads inside transactions reuse the transaction's client.
 - Load test now includes the vesting read and the message write path.
+
+
+## First build (2026-09-03): token-free, gated ideas, new site
+
+- **Flags** (`src/config/features.ts`): `TOKENS_ENABLED` (default off) hides all token fields and turns the
+  vesting/payout/ownership/forfeiture-status/specialist endpoints into 403 roadmap responses;
+  `SPECIALISTS_ENABLED` (default off). Tests run with both on (`tests/setup-env.ts`).
+- **Workspace identity**: there is no signup. `x-user-id` is the workspace id; `POST /api/avatars` creates the
+  `users` row on first use (`<id>@anonymous.mojomo.io`).
+- **Idea maturity** (Phase 4): `POST /conversations/:id/ideas/:idea_id/refinements` records a refinement
+  (optional new hypothesis, note, self-reported confidence 0..1). `PATCH .../ideas/:idea_id` advances exactly one
+  stage when gates are met: exploring 1 & 0.65, refined 2 & 0.75, mature 3 & 0.85 (409 with the reason otherwise).
+  Reaching mature sets `surfaced_at` and emits `idea_surfaced`. Migration:
+  `migrations/2026-09-03-phase4-idea-maturity.sql` (applied to `mojomo` and `mojomo_test`; also in `schema.sql`).
+- **Web**: nginx root moved from `/opt/mojomo` (which exposed the source tree) to `/var/www/mojomo`; dotfiles
+  denied; `/api/` and `/health` proxied to :8002. The page is `web/index.html` in the repo — deploy with
+  `cp web/index.html /var/www/mojomo/index.html`. Backup of the previous nginx config: `/root/mojomo.io.nginx.bak-*`.

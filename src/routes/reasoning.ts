@@ -23,6 +23,9 @@ router.post('/conversations/:id/reasoning', async (req: Request, res: Response) 
     if (conversation.rows.length === 0) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+    if (conversation.rows[0].status === 'ended') {
+      return res.status(409).json({ error: 'Conversation has ended' });
+    }
 
     const messages = await db.query(
       'SELECT avatar_id, message_content, created_at FROM mojomo.conversation_messages WHERE conversation_id = $1 ORDER BY created_at ASC',

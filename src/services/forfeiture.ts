@@ -66,6 +66,9 @@ export async function endConversation(
   return db.withTransaction(async (client) => {
     // Verify conversation exists
     const conversation = await conversationService.getConversation(conversation_id);
+    if (conversation.status === 'ended') {
+      throw new Error('Conversation has ended');
+    }
 
     // Verify authorization (only initiator/target can end, or dormancy)
     if (reason !== 'dormant_90_days') {
@@ -206,7 +209,33 @@ export async function checkAndEndDormantConversations(
   };
 }
 
+let dormantTimer: ReturnType<typeof setInterval> | null = null;
+let dormantKickoff: ReturnType<typeof setTimeout> | null = null;
+
+/** Periodically end conversations with no activity for `inactivityDays` (spec: 90-day dormancy). */
+export function startDormantScheduler(
+  intervalMs: number = Number(process.env.DORMANT_CHECK_INTERVAL_MS || 6 * 60 * 60 * 1000),
+  inactivityDays: number = Number(process.env.DORMANT_INACTIVITY_DAYS || 90),
+  firstRunDelayMs: number = 60 * 1000
+): void {
+  if (dormantTimer) return;
+  const run = () =>
+    checkAndEndDormantConversations(inactivityDays)
+      .then((r) => { if (r.ended_count > 0) console.log(`Dormancy sweep: ended ${r.ended_count} (${r.forfeited_count} with forfeiture)`); })
+      .catch((e) => console.error('Dormancy sweep failed:', e));
+  dormantKickoff = setTimeout(run, firstRunDelayMs);
+  dormantTimer = setInterval(run, intervalMs);
+  console.log(`Dormant-conversation scheduler: every ${Math.round(intervalMs / 60000)} min, inactivity ${inactivityDays} days`);
+}
+
+export function stopDormantScheduler(): void {
+  if (dormantKickoff) { clearTimeout(dormantKickoff); dormantKickoff = null; }
+  if (dormantTimer) { clearInterval(dormantTimer); dormantTimer = null; }
+}
+
 export default {
+  startDormantScheduler,
+  stopDormantScheduler,
   calculateConversationVesting,
   endConversation,
   checkAndEndDormantConversations,

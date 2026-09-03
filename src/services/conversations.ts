@@ -138,8 +138,14 @@ export async function createConversation(
 /**
  * Get conversation by ID
  */
-export async function getConversation(conversation_id: string): Promise<Conversation> {
-  const result = await db.query(
+export async function getConversation(
+  conversation_id: string,
+  client?: { query: (text: string, params?: any[]) => Promise<any> }
+): Promise<Conversation> {
+  // When called inside a transaction, read through that transaction's client: taking a second
+  // pooled connection while holding a row lock can exhaust the pool under concurrency.
+  const q = client ? client.query.bind(client) : db.query;
+  const result = await q(
     'SELECT * FROM mojomo.conversations WHERE id = $1',
     [conversation_id]
   );
@@ -192,13 +198,19 @@ export async function listConversationsForUser(
 export async function calculateAvatarOwnershipAtTime(
   avatar_id: string,
   conversation_id: string,
-  timestamp: Date = new Date()
+  timestamp: Date = new Date(),
+  client?: { query: (text: string, params?: any[]) => Promise<any> }
 ): Promise<AvatarOwnershipAtTime> {
-  const conversation = await getConversation(conversation_id);
+  const conversation = await getConversation(conversation_id, client);
 
   const entry = conversation.ownership_ledger[avatar_id];
   if (!entry) {
     throw new Error('Avatar not in conversation');
+  }
+  // Vesting stops when the conversation ends: locked tokens were forfeited at ended_at and
+  // must not become withdrawable later.
+  if (conversation.ended_at && timestamp > conversation.ended_at) {
+    timestamp = conversation.ended_at;
   }
 
   // Vesting period: 30 days from conversation creation

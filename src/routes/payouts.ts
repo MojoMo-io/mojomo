@@ -28,6 +28,7 @@ router.get('/conversations/:id/avatars/:avatar_id/vesting', async (req: Request,
       vested_pct: vesting.vested_pct,
       available_tokens: vesting.available_tokens,
       locked_tokens: vesting.locked_tokens,
+      paid_out_tokens: vesting.paid_out_tokens ?? 0,
       vesting_end_date: vesting.vesting_end_date,
       days_elapsed: vesting.days_elapsed,
       days_remaining: Math.max(
@@ -39,7 +40,7 @@ router.get('/conversations/:id/avatars/:avatar_id/vesting', async (req: Request,
       genesis_or_bought: vesting.genesis_or_bought,
     });
   } catch (error: any) {
-    if (error.message.includes('not found')) {
+    if (error.message.includes('not found') || error.message.includes('not in conversation')) {
       return res.status(404).json({ error: 'Conversation or avatar not found' });
     }
     console.error('Error fetching vesting status:', error);
@@ -68,10 +69,9 @@ router.post('/payouts/initiate', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Validation failed', details: error.errors });
     }
 
-    if (error.message.includes('not found')) {
-      return res.status(404).json({ error: 'Conversation not found' });
+    if (error.message.includes('not found') || error.message.includes('not in conversation')) {
+      return res.status(404).json({ error: 'Conversation or avatar not found' });
     }
-
     if (
       error.message.includes('Insufficient vested') ||
       error.message.includes('positive') ||

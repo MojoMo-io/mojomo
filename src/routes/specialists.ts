@@ -15,6 +15,15 @@ const JoinSpecialistSchema = z.object({
  * Body: { specialist_avatar_id }
  */
 router.post('/conversations/:id/specialists', async (req: Request, res: Response) => {
+  // Product decision 2026-09-03: conversations have a creator (initiator) and a co-creator (target) only.
+  // Specialists / late joiners are a roadmap item (see ROADMAP.md). The dilution flow stays implemented
+  // and tested behind this flag so it can be enabled without code changes.
+  if (process.env.SPECIALISTS_ENABLED !== 'true') {
+    return res.status(403).json({
+      error: 'Specialist joins are not yet available',
+      roadmap: 'Specialists & late joiners are planned; conversations currently support a creator and co-creator only.',
+    });
+  }
   try {
     const { id } = req.params;
     const payload = JoinSpecialistSchema.parse(req.body);
@@ -54,6 +63,12 @@ router.post('/conversations/:id/specialists', async (req: Request, res: Response
       return res.status(409).json({
         error: 'Concurrent join detected. Please retry.',
       });
+    }
+
+    if (error.message && error.message.includes('has ended')) {
+
+      return res.status(409).json({ error: error.message });
+
     }
 
     console.error('Error joining specialist:', error);

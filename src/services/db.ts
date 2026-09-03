@@ -10,6 +10,11 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'mojomo',
   user: process.env.DB_USER || 'mojomo',
   password: process.env.DB_PASSWORD || 'mojomo_password',
+  max: parseInt(process.env.DB_POOL_MAX || '20'),
+  // Fail fast instead of hanging forever if the pool is exhausted (e.g. a transaction waiting on a
+  // row lock while another query needs a connection).
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '10000'),
+  idleTimeoutMillis: 30000,
 });
 
 pool.on('error', (err) => {

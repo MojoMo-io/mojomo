@@ -3,6 +3,7 @@ import cors from 'cors';
 import * as dotenv from 'dotenv';
 import * as db from './services/db';
 import { startJobQueue, stopJobQueue } from './services/job-queue';
+import { startDormantScheduler, stopDormantScheduler } from './services/forfeiture';
 import avatarRoutes from './routes/avatars';
 import conversationRoutes from './routes/conversations';
 import specialistRoutes from './routes/specialists';
@@ -61,6 +62,7 @@ async function gracefulShutdown() {
 
   console.log('\nShutting down gracefully...');
   await stopJobQueue();
+  stopDormantScheduler();
   
   server.close(async () => {
     await db.closePool();
@@ -85,6 +87,7 @@ const server = app.listen(PORT, async () => {
   await startJobQueue(5000, 5).catch(err =>
     console.error('Failed to start job queue:', err)
   );
+  startDormantScheduler();
 });
 
 export default app;

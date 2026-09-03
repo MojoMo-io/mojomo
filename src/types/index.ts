@@ -110,6 +110,8 @@ export interface AvatarOwnershipAtTime {
   locked_tokens: number;
   ownership_pct: number;
   total_buy_in_tokens: number;
+  /** Sum of pending/completed payouts already taken; available_tokens is net of this */
+  paid_out_tokens?: number;
 }
 
 export interface CreateAvatarPayload {

@@ -36,6 +36,9 @@ router.post('/conversations/:id/end', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
+    if (error.message.includes('has ended')) {
+      return res.status(409).json({ error: error.message });
+    }
     if (error.message.includes('Only initiator')) {
       return res.status(403).json({ error: error.message });
     }

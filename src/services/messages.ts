@@ -79,6 +79,9 @@ export async function storeMessage(
   if (!message_content) throw new Error('Message content is empty after sanitization');
   // Verify conversation exists
   const conversation = await conversationService.getConversation(conversation_id);
+  if (conversation.status === 'ended') {
+    throw new Error('Conversation has ended');
+  }
 
   // Verify avatar is participant
   const is_participant =

@@ -41,6 +41,9 @@ export async function executeSpecialistJoinWithDilution(
     }
 
     const conversation_row = conversationResult.rows[0];
+    if (conversation_row.status === 'ended') {
+      throw new Error('Conversation has ended');
+    }
     const current_ownership = (typeof conversation_row.ownership_ledger === 'string' ? JSON.parse(conversation_row.ownership_ledger) : conversation_row.ownership_ledger);
     const participant_avatar_ids = conversation_row.participant_avatar_ids || [];
 

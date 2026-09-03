@@ -92,6 +92,7 @@ hr{border:0;border-top:1px solid var(--line);margin:34px 0 22px}
       const d = await r.json().catch(() => ({}));
       if (r.status === 401) { msg.className = 'msg err'; msg.textContent = 'That access password is not right.'; }
       else if (r.status === 429) { msg.className = 'msg err'; msg.textContent = 'Too many requests. Please wait a few minutes.'; }
+      else if (r.status === 503) { msg.className = 'msg err'; msg.textContent = d.error || 'Email is temporarily unavailable. Try again shortly.'; }
       else if (!r.ok) { msg.className = 'msg err'; msg.textContent = d.error || 'Something went wrong. Try again.'; }
       else { $('form').style.display = 'none'; $('sent').style.display = 'block'; $('sentTo').textContent = d.message && d.message.includes('not configured') ? d.message : `A link is on its way to ${email}.`; if (d.debug_link) { $('sentTo').innerHTML += ` <a href="${d.debug_link}">Open link (dev)</a>`; } }
     } catch { msg.className = 'msg err'; msg.textContent = 'Network error. Try again.'; }

@@ -33,6 +33,10 @@ router.post('/auth/magic-link', magicLinkLimiter, async (req: Request, res: Resp
     const link = await auth.createMagicLink(payload.email);
     const sent = await mailer.sendMagicLinkEmail(link.email, link.url, auth.MAGIC_LINK_TTL_MIN);
     metrics.magicLinks.inc({ provider: sent.provider, accepted: String(sent.accepted) });
+    if (sent.provider === 'smtp' && !sent.accepted) {
+      // Provider-side failure is not address-specific, so reporting it does not enable enumeration.
+      return res.status(503).json({ error: 'The sign-in email could not be sent right now. Please try again in a few minutes.' });
+    }
     const body: any = { ok: true, message: 'If that address is yours, a sign-in link is on its way. It works once and expires in 20 minutes.' };
     if (sent.provider === 'console' && process.env.NODE_ENV !== 'production') body.debug_link = link.url;
     if (sent.provider === 'console' && process.env.NODE_ENV === 'production') body.message = 'Email delivery is not configured yet. Ask the administrator for your sign-in link.';

@@ -14,7 +14,13 @@ export function mailProvider(): 'smtp' | 'console' {
 
 let transport: nodemailer.Transporter | null = null;
 function smtp(): nodemailer.Transporter {
-  if (!transport) transport = nodemailer.createTransport(process.env.SMTP_URL || 'smtp://127.0.0.1:25', { connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 15000 });
+  if (!transport) {
+    const url = new URL(process.env.SMTP_URL || 'smtp://127.0.0.1:25');
+    const loopback = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(url.hostname);
+    // The local Postfix hop has no certificate: never attempt STARTTLS on loopback (454 "TLS not available").
+    if (loopback && !url.searchParams.has('ignoreTLS')) url.searchParams.set('ignoreTLS', 'true');
+    transport = nodemailer.createTransport(url.toString(), { connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 15000 } as any);
+  }
   return transport;
 }
 

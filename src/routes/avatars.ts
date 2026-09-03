@@ -29,7 +29,13 @@ router.post('/avatars', async (req: Request, res: Response) => {
     const payload = CreateAvatarSchema.parse(req.body);
 
     // For now, use a placeholder user_id (in real app, from JWT)
-    const user_id = req.headers['x-user-id'] as string || uuidv4();
+    const user_id = (req.headers['x-user-id'] as string) || uuidv4();
+    // There is no signup flow in the first build: the x-user-id header is the workspace identity.
+    // Make sure the user row exists so the avatar FK holds.
+    await db.query(
+      'INSERT INTO mojomo.users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
+      [user_id, `${user_id}@anonymous.mojomo.io`]
+    );
 
     let telegram_verified_at: Date | null = null;
 

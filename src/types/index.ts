@@ -81,8 +81,21 @@ export interface IdeaRepository {
   extracted_from_message_id?: string;
   maturity_stage: 'seedling' | 'exploring' | 'refined' | 'mature';
   confidence_score?: number;
+  refinement_count: number;
+  surfaced_at?: Date;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface IdeaRefinement {
+  id: string;
+  idea_id: string;
+  avatar_id: string;
+  previous_hypothesis: string;
+  new_hypothesis: string;
+  note?: string;
+  confidence_score?: number;
+  created_at: Date;
 }
 
 export interface Payout {

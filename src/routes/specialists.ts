@@ -1,10 +1,12 @@
 // Specialist API endpoints
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { hideTokenFields, specialistsEnabled, tokensEnabled } from '../config/features';
 import { joinConversationAsSpecialist } from '../services/specialists';
 import * as conversationService from '../services/conversations';
 
 const router = Router();
+router.use(hideTokenFields);
 
 const JoinSpecialistSchema = z.object({
   specialist_avatar_id: z.string().uuid(),
@@ -18,7 +20,8 @@ router.post('/conversations/:id/specialists', async (req: Request, res: Response
   // Product decision 2026-09-03: conversations have a creator (initiator) and a co-creator (target) only.
   // Specialists / late joiners are a roadmap item (see ROADMAP.md). The dilution flow stays implemented
   // and tested behind this flag so it can be enabled without code changes.
-  if (process.env.SPECIALISTS_ENABLED !== 'true') {
+  // Dilution is part of the token economy: both flags must be on.
+  if (!specialistsEnabled() || !tokensEnabled()) {
     return res.status(403).json({
       error: 'Specialist joins are not yet available',
       roadmap: 'Specialists & late joiners are planned; conversations currently support a creator and co-creator only.',

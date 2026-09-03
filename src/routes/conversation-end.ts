@@ -1,9 +1,12 @@
 // Conversation ending API endpoints
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { hideTokenFields, requireTokens } from '../config/features';
 import * as forfeitureService from '../services/forfeiture';
 
 const router = Router();
+router.use(hideTokenFields);
+router.use('/conversations/:id/forfeiture-status', requireTokens);
 
 const EndConversationSchema = z.object({
   avatar_id: z.string().uuid(),

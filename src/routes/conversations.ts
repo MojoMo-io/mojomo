@@ -2,8 +2,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as conversationService from '../services/conversations';
+import { tokensEnabled, hideTokenFields, requireTokens, INTERNAL_PLACEHOLDER_TOKENS } from '../config/features';
 
 const router = Router();
+router.use(hideTokenFields);
+router.use(['/conversations/:id/ownership', '/conversations/:id/avatars/:avatar_id/ownership'], requireTokens);
 
 // Validation schemas
 const CreateConversationSchema = z.object({
@@ -11,7 +14,8 @@ const CreateConversationSchema = z.object({
   target_avatar_id: z.string().uuid(),
   title: z.string().min(1).max(255),
   description: z.string().max(1000).optional(),
-  total_tokens: z.number().positive(),
+  // Required only when the token economy is enabled; otherwise an internal placeholder is used.
+  total_tokens: z.number().positive().optional(),
 });
 
 /**
@@ -21,12 +25,16 @@ const CreateConversationSchema = z.object({
 router.post('/conversations', async (req: Request, res: Response) => {
   try {
     const payload = CreateConversationSchema.parse(req.body);
+    if (tokensEnabled() && payload.total_tokens === undefined) {
+      return res.status(400).json({ error: 'Validation failed', details: [{ path: ['total_tokens'], message: 'Required' }] });
+    }
+    const totalTokens = tokensEnabled() ? (payload.total_tokens as number) : INTERNAL_PLACEHOLDER_TOKENS;
 
     const conversation = await conversationService.createConversation(
       payload.initiator_avatar_id,
       payload.target_avatar_id,
       payload.title,
-      payload.total_tokens,
+      totalTokens,
       payload.description
     );
 

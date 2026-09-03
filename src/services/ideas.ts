@@ -1,7 +1,7 @@
 // Idea extraction and repository service
 import { v4 as uuidv4 } from 'uuid';
 import * as db from './db';
-import { IdeaRepository } from '../types';
+import { IdeaRepository, IdeaRefinement } from '../types';
 
 const IDEA_EXTRACTION_THRESHOLD = 0.65;
 const IDEA_TITLE_MAX = 255;
@@ -143,35 +143,122 @@ export async function listIdeasByMaturity(
 /**
  * Update idea maturity stage
  */
+export type MaturityStage = 'seedling' | 'exploring' | 'refined' | 'mature';
+export const STAGE_ORDER: Record<MaturityStage, number> = { seedling: 0, exploring: 1, refined: 2, mature: 3 };
+
+/**
+ * Progression gates (spec: MOJOMO-TESTING-VALIDATION-STRATEGY "Idea Maturity Progression"), mapped onto
+ * the sprint plan's stage names. Each step needs a minimum number of refinements and a confidence floor.
+ */
+export const MATURITY_GATES: Record<Exclude<MaturityStage, 'seedling'>, { min_refinements: number; min_confidence: number }> = {
+  exploring: { min_refinements: 1, min_confidence: 0.65 },
+  refined:   { min_refinements: 2, min_confidence: 0.75 },
+  mature:    { min_refinements: 3, min_confidence: 0.85 },
+};
+
+export function canTransition(
+  from: MaturityStage,
+  to: MaturityStage,
+  state: { refinement_count: number; confidence: number }
+): { ok: boolean; reason?: string } {
+  if (STAGE_ORDER[to] < STAGE_ORDER[from]) return { ok: false, reason: `Cannot move idea backwards from ${from} to ${to}` };
+  if (STAGE_ORDER[to] === STAGE_ORDER[from]) return { ok: false, reason: `Idea is already ${to}` };
+  if (STAGE_ORDER[to] !== STAGE_ORDER[from] + 1) return { ok: false, reason: `Cannot skip from ${from} to ${to}; advance one stage at a time` };
+  const gate = MATURITY_GATES[to as Exclude<MaturityStage, 'seedling'>];
+  if (state.refinement_count < gate.min_refinements) {
+    return { ok: false, reason: `${to} requires at least ${gate.min_refinements} refinement(s); idea has ${state.refinement_count}` };
+  }
+  if (state.confidence < gate.min_confidence) {
+    return { ok: false, reason: `${to} requires confidence >= ${gate.min_confidence}; idea has ${state.confidence.toFixed(2)}` };
+  }
+  return { ok: true };
+}
+
+async function assertParticipant(conversation_id: string, avatar_id: string): Promise<void> {
+  const r = await db.query(
+    `SELECT 1 FROM mojomo.conversations
+     WHERE id = $1 AND (initiator_avatar_id = $2 OR target_avatar_id = $2 OR $2 = ANY(participant_avatar_ids))`,
+    [conversation_id, avatar_id]
+  );
+  if (r.rows.length === 0) throw new Error('Avatar is not a participant in this conversation');
+}
+
+/** Record a refinement: optionally rewrite the hypothesis and/or restate confidence; always counts as one refinement. */
+export async function refineIdea(
+  idea_id: string,
+  avatar_id: string,
+  input: { full_hypothesis?: string; note?: string; confidence_score?: number }
+): Promise<{ idea: IdeaRepository; refinement: IdeaRefinement }> {
+  const idea = await getIdea(idea_id);
+  if (idea.maturity_stage === 'mature') throw new Error('Idea is already mature; refinements are closed');
+  await assertParticipant(idea.conversation_id, avatar_id);
+  const newHypothesis = (input.full_hypothesis ?? idea.full_hypothesis).substring(0, IDEA_HYPOTHESIS_MAX);
+  if (!newHypothesis.trim()) throw new Error('Hypothesis cannot be empty');
+  return db.withTransaction(async (client) => {
+    const ref = await client.query(
+      `INSERT INTO mojomo.idea_refinements (idea_id, avatar_id, previous_hypothesis, new_hypothesis, note, confidence_score)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [idea_id, avatar_id, idea.full_hypothesis, newHypothesis, input.note ?? null, input.confidence_score ?? null]
+    );
+    const upd = await client.query(
+      `UPDATE mojomo.idea_repository
+       SET full_hypothesis = $1,
+           title = CASE WHEN $2::boolean THEN $3 ELSE title END,
+           confidence_score = COALESCE($4, confidence_score),
+           refinement_count = refinement_count + 1,
+           updated_at = NOW()
+       WHERE id = $5 RETURNING *`,
+      [newHypothesis, input.full_hypothesis !== undefined, extractTitle(newHypothesis), input.confidence_score ?? null, idea_id]
+    );
+    await client.query(
+      `INSERT INTO mojomo.conversation_events (conversation_id, event_type, event_data) VALUES ($1, 'idea_refined', $2)`,
+      [idea.conversation_id, JSON.stringify({ idea_id, avatar_id, refinement_id: ref.rows[0].id, confidence_score: input.confidence_score ?? null })]
+    );
+    const r = ref.rows[0];
+    return {
+      idea: parseIdeaRow(upd.rows[0]),
+      refinement: { id: r.id, idea_id: r.idea_id, avatar_id: r.avatar_id, previous_hypothesis: r.previous_hypothesis, new_hypothesis: r.new_hypothesis, note: r.note ?? undefined, confidence_score: r.confidence_score != null ? parseFloat(r.confidence_score) : undefined, created_at: new Date(r.created_at) },
+    };
+  });
+}
+
+export async function listRefinements(idea_id: string): Promise<IdeaRefinement[]> {
+  const r = await db.query('SELECT * FROM mojomo.idea_refinements WHERE idea_id = $1 ORDER BY created_at ASC', [idea_id]);
+  return r.rows.map((x: any) => ({ id: x.id, idea_id: x.idea_id, avatar_id: x.avatar_id, previous_hypothesis: x.previous_hypothesis, new_hypothesis: x.new_hypothesis, note: x.note ?? undefined, confidence_score: x.confidence_score != null ? parseFloat(x.confidence_score) : undefined, created_at: new Date(x.created_at) }));
+}
+
+/**
+ * Advance an idea one stage, enforcing MATURITY_GATES. Reaching 'mature' surfaces the idea:
+ * surfaced_at is set and an idea_surfaced event is emitted. Idea payouts are a roadmap item (token economy).
+ */
 export async function updateIdeaMaturity(
   idea_id: string,
-  new_maturity_stage: 'seedling' | 'exploring' | 'refined' | 'mature'
+  new_maturity_stage: MaturityStage
 ): Promise<IdeaRepository> {
-  // Validate stage progression
   const idea = await getIdea(idea_id);
-
-  const stage_order = {
-    seedling: 0,
-    exploring: 1,
-    refined: 2,
-    mature: 3,
-  };
-
-  if (stage_order[new_maturity_stage] < stage_order[idea.maturity_stage]) {
-    throw new Error(
-      `Cannot move idea backwards from ${idea.maturity_stage} to ${new_maturity_stage}`
+  // numeric columns arrive from pg as strings; coerce before comparing/formatting
+  const check = canTransition(idea.maturity_stage, new_maturity_stage, {
+    refinement_count: Number(idea.refinement_count ?? 0),
+    confidence: Number(idea.confidence_score ?? 0),
+  });
+  if (!check.ok) throw new Error(check.reason);
+  return db.withTransaction(async (client) => {
+    const result = await client.query(
+      `UPDATE mojomo.idea_repository
+       SET maturity_stage = $1,
+           surfaced_at = CASE WHEN $3::boolean THEN NOW() ELSE surfaced_at END,
+           updated_at = NOW()
+       WHERE id = $2 RETURNING *`,
+      [new_maturity_stage, idea_id, new_maturity_stage === 'mature']
     );
-  }
-
-  const result = await db.query(
-    `UPDATE mojomo.idea_repository
-     SET maturity_stage = $1, updated_at = NOW()
-     WHERE id = $2
-     RETURNING *`,
-    [new_maturity_stage, idea_id]
-  );
-
-  return parseIdeaRow(result.rows[0]);
+    await client.query(
+      `INSERT INTO mojomo.conversation_events (conversation_id, event_type, event_data) VALUES ($1, $2, $3)`,
+      [idea.conversation_id, new_maturity_stage === 'mature' ? 'idea_surfaced' : 'idea_maturity_advanced',
+       JSON.stringify({ idea_id, from: idea.maturity_stage, to: new_maturity_stage, confidence_score: idea.confidence_score, refinement_count: idea.refinement_count,
+         ...(new_maturity_stage === 'mature' ? { payout: 'roadmap: token economy disabled in this build' } : {}) })]
+    );
+    return parseIdeaRow(result.rows[0]);
+  });
 }
 
 /**
@@ -204,6 +291,8 @@ export async function getIdeaWithMessage(
  */
 function parseIdeaRow(row: any): IdeaRepository {
   return {
+    refinement_count: Number(row.refinement_count ?? 0),
+    surfaced_at: row.surfaced_at ? new Date(row.surfaced_at) : undefined,
     id: row.id,
     conversation_id: row.conversation_id,
     title: row.title,
@@ -218,6 +307,10 @@ function parseIdeaRow(row: any): IdeaRepository {
 }
 
 export default {
+  canTransition,
+  refineIdea,
+  listRefinements,
+  MATURITY_GATES,
   extractIdeaFromMessage,
   getIdea,
   listIdeas,

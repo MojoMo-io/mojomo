@@ -1,9 +1,14 @@
 // Payout API endpoints
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { requireTokens } from '../config/features';
 import * as payoutService from '../services/payouts';
 
 const router = Router();
+// Vesting and payouts are part of the token economy (roadmap item in this build).
+// Scoped to this router's own paths: a path-less router.use() would intercept every /api request
+// that passes through this router on its way to routers mounted later.
+router.use(['/payouts', '/conversations/:id/payouts', '/conversations/:id/avatars/:avatar_id/vesting'], requireTokens);
 
 const InitiatePayoutSchema = z.object({
   avatar_id: z.string().uuid(),

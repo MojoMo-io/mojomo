@@ -1,81 +1,28 @@
-import express from 'express';
-import cors from 'cors';
+// Process entry point: builds the app and runs background schedulers.
 import * as dotenv from 'dotenv';
+dotenv.config();
 import * as db from './services/db';
+import { createApp } from './app';
 import { startJobQueue, stopJobQueue } from './services/job-queue';
 import { startDormantScheduler, stopDormantScheduler } from './services/forfeiture';
-import avatarRoutes from './routes/avatars';
-import conversationRoutes from './routes/conversations';
-import specialistRoutes from './routes/specialists';
-import payoutRoutes from './routes/payouts';
-import messageRoutes from './routes/messages';
-import ideaRoutes from './routes/ideas';
-import conversationEndRoutes from './routes/conversation-end';
-import reasoningRoutes from './routes/reasoning';
+import { purgeExpiredAuth } from './services/auth';
+import { mailProvider } from './services/mailer';
 
-dotenv.config();
-
-const app = express();
 const PORT = parseInt(process.env.PORT || '8002');
+const app = createApp();
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
-  next();
-});
-
-app.get('/health', async (req, res) => {
-  const isHealthy = await db.healthCheck();
-  if (isHealthy) {
-    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-  } else {
-    res.status(503).json({ status: 'unhealthy', timestamp: new Date().toISOString() });
-  }
-});
-
-app.use('/api', avatarRoutes);
-app.use('/api', conversationRoutes);
-app.use('/api', specialistRoutes);
-app.use('/api', payoutRoutes);
-app.use('/api', messageRoutes);
-app.use('/api', ideaRoutes);
-app.use('/api', conversationEndRoutes);
-app.use('/api', reasoningRoutes);
-
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
+let authPurge: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
-
 async function gracefulShutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
-
   console.log('\nShutting down gracefully...');
   await stopJobQueue();
   stopDormantScheduler();
-  
-  server.close(async () => {
-    await db.closePool();
-    console.log('Server shut down');
-    process.exit(0);
-  });
-
-  setTimeout(() => {
-    console.error('Forced shutdown after timeout');
-    process.exit(1);
-  }, 10000);
+  if (authPurge) clearInterval(authPurge);
+  server.close(async () => { await db.closePool(); console.log('Server shut down'); process.exit(0); });
+  setTimeout(() => { console.error('Forced shutdown after timeout'); process.exit(1); }, 10000);
 }
-
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
@@ -83,11 +30,11 @@ const server = app.listen(PORT, async () => {
   console.log(`MOJOMO API server listening on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
-  
-  await startJobQueue(5000, 5).catch(err =>
-    console.error('Failed to start job queue:', err)
-  );
+  console.log(`Auth: site password ${process.env.SITE_ACCESS_PASSWORD ? 'set' : 'NOT SET (site locked to everyone)'}; mail provider ${mailProvider()} (${process.env.SMTP_URL || 'smtp://127.0.0.1:25'})`);
+  console.log(`Flags: TOKENS_ENABLED=${process.env.TOKENS_ENABLED === 'true'} SPECIALISTS_ENABLED=${process.env.SPECIALISTS_ENABLED === 'true'}`);
+  await startJobQueue(5000, 5).catch((err) => console.error('Failed to start job queue:', err));
   startDormantScheduler();
+  authPurge = setInterval(() => purgeExpiredAuth().catch((e) => console.error('Auth purge failed:', e)), 60 * 60 * 1000);
 });
 
 export default app;

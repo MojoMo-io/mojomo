@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 PORT="${LOAD_PORT:-8999}"
 npm run build >/dev/null
-DB_NAME=mojomo_test PORT=$PORT NODE_ENV=test node dist/server.js >/tmp/mojomo-load-server.log 2>&1 &
+DB_NAME=mojomo_test PORT=$PORT NODE_ENV=test RATE_LIMIT_MAX=1000000 MAIL_PROVIDER=console SITE_ACCESS_PASSWORD=load node dist/server.js >/tmp/mojomo-load-server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null || true' EXIT
 for i in $(seq 1 30); do curl -sf "http://localhost:$PORT/health" >/dev/null 2>&1 && break; sleep 0.5; done

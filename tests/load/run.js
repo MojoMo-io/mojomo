@@ -1,7 +1,7 @@
 // Spec LAYER 4 load test: p50 < 100ms, p95 < 200ms, p99 < 500ms, error rate < 1%, 100 req/s sustained.
 // Usage: node tests/load/run.js  (expects server at BASE_URL, default http://localhost:8999, on mojomo_test)
 const autocannon = require('autocannon');
-const { randomUUID } = require('crypto');
+const { randomUUID, createHash, randomBytes } = require('crypto');
 process.env.DB_NAME = process.env.DB_NAME || 'mojomo_test';
 const BASE = process.env.BASE_URL || 'http://localhost:8999';
 const RATE = Number(process.env.LOAD_RPS || 100);
@@ -13,11 +13,15 @@ async function seed() {
   const userId = randomUUID(), a1 = randomUUID(), a2 = randomUUID();
   await db.query('INSERT INTO mojomo.users (id, email) VALUES ($1,$2)', [userId, `load-${Date.now()}@test.com`]);
   await db.query('INSERT INTO mojomo.avatars (id,user_id,name,avatar_type) VALUES ($1,$3,$4,$6),($2,$3,$5,$6)', [a1, a2, userId, 'Load A', 'Load B', 'individual']);
-  const res = await fetch(`${BASE}/api/conversations`, { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ initiator_avatar_id: a1, target_avatar_id: a2, title: 'load', total_tokens: 1000 }) });
+  // Phase 5: the API requires a session cookie. Mint one directly in the DB for the seeded user.
+  const sessionToken = randomBytes(32).toString('base64url');
+  await db.query(`INSERT INTO mojomo.sessions (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + interval '1 hour')`, [userId, createHash('sha256').update(sessionToken).digest('hex')]);
+  const cookie = `mojomo_session=${sessionToken}`;
+  const res = await fetch(`${BASE}/api/conversations`, { method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ initiator_avatar_id: a1, target_avatar_id: a2, title: 'load' }) });
   if (res.status !== 201) throw new Error(`seed conversation failed: ${res.status} ${await res.text()}`);
   const conv = (await res.json()).id;
-  return { userId, a1, conv, cleanup: () => db.query('DELETE FROM mojomo.users WHERE id = $1', [userId]) };
+  return { userId, a1, conv, cookie, cleanup: () => db.query('DELETE FROM mojomo.users WHERE id = $1', [userId]) };
 }
 
 function run(title, url, headers = {}, method = 'GET', body) {
@@ -30,12 +34,13 @@ function run(title, url, headers = {}, method = 'GET', body) {
   const s = await seed();
   const targets = [
     ['GET /health', `${BASE}/health`],
-    ['GET /api/avatars/:id', `${BASE}/api/avatars/${s.a1}`],
-    ['GET /api/avatars (by user)', `${BASE}/api/avatars`, { 'x-user-id': s.userId }],
-    ['GET /api/conversations/:id/ownership', `${BASE}/api/conversations/${s.conv}/ownership`],
-    ['GET /api/conversations/:id/forfeiture-status', `${BASE}/api/conversations/${s.conv}/forfeiture-status`],
-    ['GET /api/conversations/:id/avatars/:id/vesting', `${BASE}/api/conversations/${s.conv}/avatars/${s.a1}/vesting`],
-    ['POST /api/conversations/:id/messages (write)', `${BASE}/api/conversations/${s.conv}/messages`, { 'content-type': 'application/json' }, 'POST',
+    ['GET /api/auth/me (session lookup)', `${BASE}/api/auth/me`, { cookie: s.cookie }],
+    ['GET /api/avatars/:id', `${BASE}/api/avatars/${s.a1}`, { cookie: s.cookie }],
+    ['GET /api/avatars (mine)', `${BASE}/api/avatars`, { cookie: s.cookie }],
+    ['GET /api/conversations/:id', `${BASE}/api/conversations/${s.conv}`, { cookie: s.cookie }],
+    ['GET /api/conversations/:id/ideas', `${BASE}/api/conversations/${s.conv}/ideas`, { cookie: s.cookie }],
+    ['GET /api/conversations/:id/messages', `${BASE}/api/conversations/${s.conv}/messages`, { cookie: s.cookie }],
+    ['POST /api/conversations/:id/messages (write)', `${BASE}/api/conversations/${s.conv}/messages`, { 'content-type': 'application/json', cookie: s.cookie }, 'POST',
       JSON.stringify({ avatar_id: s.a1, message_content: 'load test message with an idea and a hypothesis', message_type: 'user_message' })],
   ];
   let failed = false;

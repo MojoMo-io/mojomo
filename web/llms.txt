@@ -1,0 +1,21 @@
+# MOJOMO
+
+> A private atelier for two minds. A creator and a co-creator hold a conversation; MOJOMO (Claude-powered) reflects on it; the ideas worth keeping are extracted, named, refined and advanced through stages — seedling, exploring, refined, mature — until they are surfaced.
+
+MOJOMO is in private beta. Pages and the API require an invitation (site access password) and sign-in by emailed magic link. There is nothing to crawl here; this file exists so agents understand what the site is.
+
+## What it does
+- Avatars: your identity in a conversation. One person may have several.
+- Conversations: exactly two parties in this build — creator and co-creator.
+- Reflection: on request, the conversation is analysed for themes, insights, tensions and next steps, and an idea hypothesis is drawn out with a confidence score.
+- Ideas: extracted automatically when confidence exceeds 0.65; refined by participants; advanced one stage at a time when refinement and confidence gates are met (1 & 0.65, 2 & 0.75, 3 & 0.85).
+
+## Not in this build
+- Token economy (allocation, vesting, payouts), specialists / late joiners, payments. These are roadmap items.
+
+## API
+- Base: https://mojomo.io/api — JSON; session cookie required (obtained via /api/auth/magic-link then /api/auth/verify).
+- Health: https://mojomo.io/health
+
+## Contact
+- https://mojomo.io/login

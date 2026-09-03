@@ -12,6 +12,12 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
 - **Phase 4 (first-build scope)** — gated idea maturity (refinements + confidence per stage), refinement history,
   surfacing event, E2E journey; token economy switched off; redesigned mojomo.io.
 
+## Shipped in Phase 5 (first build)
+- Site locked behind access password + magic-link sign-in; sessions; ownership enforcement; security headers,
+  CORS, rate limits, input hardening; `/metrics`; `llms.txt`/`robots.txt`; daily DB backups; SMTP via local Postfix.
+- Not done: Stripe and payouts (token economy), Prometheus/Grafana *servers* (only the `/metrics` endpoint exists),
+  Playwright browser E2E.
+
 ## Deferred: the token economy
 **Decision (2026-09-03):** the first build ships **without tokens** — avatars, two-party conversations, Claude
 reflection, idea extraction and gated idea maturity. "Get the model right first"; the economy comes after.

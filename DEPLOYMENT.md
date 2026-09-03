@@ -249,3 +249,21 @@ regressed the Phase 1 forfeiture authorization. They are preserved at tag
 - **Web**: nginx root moved from `/opt/mojomo` (which exposed the source tree) to `/var/www/mojomo`; dotfiles
   denied; `/api/` and `/health` proxied to :8002. The page is `web/index.html` in the repo — deploy with
   `cp web/index.html /var/www/mojomo/index.html`. Backup of the previous nginx config: `/root/mojomo.io.nginx.bak-*`.
+
+## Phase 5 (2026-09-03): the site is locked
+
+- **Login = site access password + emailed magic link.** `SITE_ACCESS_PASSWORD` in `.env` (read it with
+  `grep SITE_ACCESS_PASSWORD /opt/mojomo/.env`). Links are single-use, 20 min; sessions 30 days, HttpOnly cookie.
+- **Pages are gated in nginx** via `auth_request /api/auth/check` -> unauthenticated visitors are redirected to `/login`.
+  Public: `/login`, `/llms.txt`, `/robots.txt`, `/health`, `/api/auth/*`. Config lives in the repo:
+  `deploy-nginx-mojomo.io.conf` -> `/etc/nginx/sites-available/mojomo.io`.
+- **API**: every `/api` route (except auth) requires the session; `x-user-id` from clients is discarded; you can only
+  act as your own avatars and only see conversations you take part in (others get 404). Non-UUID ids -> 404.
+  Helmet headers, CORS restricted to PUBLIC_URL, JSON body limit 100kb, rate limits (300/min per IP; 5/15 min for
+  magic links per IP+email). Prometheus metrics at `/metrics` (loopback only; not proxied by nginx).
+- **Mail**: SMTP via local Postfix (`SMTP_URL=smtp://127.0.0.1:25`, `MAIL_FROM=no-reply@mojomo.io`). Bootstrap or
+  recovery without email: `npm run auth:link -- you@example.com` prints a link (root shell only).
+- **Backups**: `/opt/backups/mojomo-backup.sh` daily 03:10 via `/etc/cron.d/mojomo-backup`, 14-day retention,
+  `pg_restore -d mojomo <dump>` to restore.
+- **Deploy pages**: `install -o www-data -g www-data -m 644 web/{index,login}.html web/{llms,robots}.txt /var/www/mojomo/`.
+- Stripe / payouts (spec Phase 5) belong to the token economy -> ROADMAP.md.

@@ -181,3 +181,24 @@ sudo -u postgres psql -d mojomo < /tmp/mojomo-backup.sql
 
 **Last Updated:** 2026-09-02  
 **Deployed by:** Claude Haiku 4.5
+
+## Test Database (added 2026-09-03)
+
+Jest is pinned to a dedicated database via `tests/setup-env.ts` (`DB_NAME=mojomo_test`),
+so the suite never writes to production. Recreate it from the canonical schema whenever
+`schema.sql` changes:
+
+```bash
+sudo -u postgres psql -p 5433 -c "DROP DATABASE IF EXISTS mojomo_test"
+sudo -u postgres psql -p 5433 -c "CREATE DATABASE mojomo_test"
+sudo -u postgres psql -p 5433 -d mojomo_test -v ON_ERROR_STOP=1 -f schema.sql
+```
+
+`schema.sql` is verified to reproduce the production `mojomo` schema exactly (10 tables).
+
+## History note
+
+Master was reset on 2026-09-03 from the `v4.0` line (Sprints 10-18) back to Sprint 9.
+Those sprints shipped services with no routes, no migrations, and placeholder tests, and
+regressed the Phase 1 forfeiture authorization. They are preserved at tag
+`archive/v4.0-unverified` and on the `phase-2/*`, `phase-3/*`, `phase-4/*` branches for salvage.

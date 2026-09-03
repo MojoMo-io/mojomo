@@ -133,3 +133,56 @@ CREATE INDEX idx_payouts_avatar ON payouts(avatar_id);
 CREATE INDEX idx_payouts_status ON payouts(status);
 
 COMMIT;
+
+
+-- ============================================================
+-- Tables present in production DB but previously undocumented
+-- (extracted from pg_dump 2026-09-03; users + Sprint 8 reasoning).
+-- Order matters: message_queue references reasoning_logs.
+-- ============================================================
+CREATE TABLE mojomo.users (
+    id uuid NOT NULL,
+    email character varying(255) NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE mojomo.reasoning_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id uuid NOT NULL,
+    prompt text,
+    response text,
+    tokens_used integer,
+    cost numeric(10,6),
+    status character varying(50) DEFAULT 'pending'::character varying,
+    error_message text,
+    created_at timestamp without time zone DEFAULT now(),
+    completed_at timestamp without time zone
+);
+
+CREATE TABLE mojomo.message_queue (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id uuid NOT NULL,
+    reasoning_logs_id uuid,
+    status character varying(50) DEFAULT 'pending'::character varying,
+    attempts integer DEFAULT 0,
+    max_attempts integer DEFAULT 3,
+    error_message text,
+    result jsonb,
+    created_at timestamp without time zone DEFAULT now(),
+    started_at timestamp without time zone,
+    completed_at timestamp without time zone
+);
+
+ALTER TABLE ONLY mojomo.users     ADD CONSTRAINT users_email_key UNIQUE (email);
+ALTER TABLE ONLY mojomo.users     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+CREATE INDEX idx_users_email ON mojomo.users USING btree (email);
+ALTER TABLE ONLY mojomo.reasoning_logs     ADD CONSTRAINT reasoning_logs_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY mojomo.reasoning_logs     ADD CONSTRAINT reasoning_logs_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES mojomo.conversations(id) ON DELETE CASCADE;
+CREATE INDEX idx_reasoning_logs_conversation ON mojomo.reasoning_logs USING btree (conversation_id);
+CREATE INDEX idx_reasoning_logs_created ON mojomo.reasoning_logs USING btree (created_at DESC);
+ALTER TABLE ONLY mojomo.message_queue     ADD CONSTRAINT message_queue_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY mojomo.message_queue     ADD CONSTRAINT message_queue_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES mojomo.conversations(id) ON DELETE CASCADE;
+ALTER TABLE ONLY mojomo.message_queue     ADD CONSTRAINT message_queue_reasoning_logs_id_fkey FOREIGN KEY (reasoning_logs_id) REFERENCES mojomo.reasoning_logs(id) ON DELETE CASCADE;
+CREATE INDEX idx_message_queue_created ON mojomo.message_queue USING btree (created_at DESC);
+CREATE INDEX idx_message_queue_status ON mojomo.message_queue USING btree (status);

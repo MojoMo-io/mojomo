@@ -37,6 +37,21 @@ export function buildUserPrompt(
   return customPrompt ? `${basePrompt}\n\n${customPrompt}` : basePrompt;
 }
 
+/**
+ * Tolerant JSON extraction: models often wrap output in ```json fences or add a
+ * leading sentence despite "JSON only" instructions. Take the outermost {...}.
+ */
+export function parseReasoningJson(text: string): ReasoningResponse {
+  let t = text.trim();
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const start = t.indexOf('{');
+  const end = t.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('No JSON object in Claude response');
+  }
+  return JSON.parse(t.slice(start, end + 1)) as ReasoningResponse;
+}
+
 export async function callClaudeReasoning(
   request: ReasoningRequest,
   maxAttempts: number = 3
@@ -49,7 +64,7 @@ export async function callClaudeReasoning(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const message = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
@@ -61,7 +76,7 @@ export async function callClaudeReasoning(
       }
 
       const responseText = textContent.text.trim();
-      const response: ReasoningResponse = JSON.parse(responseText);
+      const response: ReasoningResponse = parseReasoningJson(responseText);
 
       const inputTokens = message.usage.input_tokens;
       const outputTokens = message.usage.output_tokens;

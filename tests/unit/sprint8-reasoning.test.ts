@@ -139,3 +139,20 @@ describe('Sprint 8: Claude Reasoning Service', () => {
     });
   });
 });
+
+describe('parseReasoningJson (fence-tolerant)', () => {
+  const { parseReasoningJson } = require('../../src/services/claude');
+  const body = '{"themes":["a"],"insights":["b"],"quality_score":7,"next_steps":[],"tensions":[]}';
+  test('parses bare JSON', () => {
+    expect(parseReasoningJson(body).quality_score).toBe(7);
+  });
+  test('strips ```json fences', () => {
+    expect(parseReasoningJson('```json\n' + body + '\n```').themes).toEqual(['a']);
+  });
+  test('ignores leading prose before the object', () => {
+    expect(parseReasoningJson('Here is the analysis:\n' + body).insights).toEqual(['b']);
+  });
+  test('throws when no object present', () => {
+    expect(() => parseReasoningJson('no json here')).toThrow('No JSON object');
+  });
+});

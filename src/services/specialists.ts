@@ -24,11 +24,11 @@ export async function executeSpecialistJoinWithDilution(
   const lock_id = crc.crc32(conversation_id) >>> 0; // Ensure positive 32-bit int
 
   try {
+    // Isolation level must be set before ANY other statement in the transaction (Postgres rule).
+    await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
     // Acquire lock (blocks until available)
     await client.query('SELECT pg_advisory_xact_lock($1)', [lock_id]);
 
-    // Set SERIALIZABLE isolation for this transaction
-    await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
 
     // Re-fetch conversation to check for concurrent modifications
     const conversationResult = await client.query(
@@ -41,7 +41,7 @@ export async function executeSpecialistJoinWithDilution(
     }
 
     const conversation_row = conversationResult.rows[0];
-    const current_ownership = JSON.parse(conversation_row.ownership_ledger);
+    const current_ownership = (typeof conversation_row.ownership_ledger === 'string' ? JSON.parse(conversation_row.ownership_ledger) : conversation_row.ownership_ledger);
     const participant_avatar_ids = conversation_row.participant_avatar_ids || [];
 
     // Check if specialist already in conversation

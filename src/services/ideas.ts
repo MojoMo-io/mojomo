@@ -61,7 +61,7 @@ export async function extractIdeaFromMessage(
         extracted_by_avatar_id, extracted_from_message_id,
         maturity_stage, confidence_score
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      ON CONFLICT (extracted_from_message_id) DO NOTHING
+      ON CONFLICT (extracted_from_message_id) WHERE extracted_from_message_id IS NOT NULL DO NOTHING
       RETURNING *`,
       [
         idea_id,

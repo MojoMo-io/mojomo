@@ -186,3 +186,7 @@ ALTER TABLE ONLY mojomo.message_queue     ADD CONSTRAINT message_queue_conversat
 ALTER TABLE ONLY mojomo.message_queue     ADD CONSTRAINT message_queue_reasoning_logs_id_fkey FOREIGN KEY (reasoning_logs_id) REFERENCES mojomo.reasoning_logs(id) ON DELETE CASCADE;
 CREATE INDEX idx_message_queue_created ON mojomo.message_queue USING btree (created_at DESC);
 CREATE INDEX idx_message_queue_status ON mojomo.message_queue USING btree (status);
+
+-- users must exist before this FK (users is defined above); mirrors production constraint fk_avatars_user
+ALTER TABLE ONLY mojomo.avatars
+    ADD CONSTRAINT fk_avatars_user FOREIGN KEY (user_id) REFERENCES mojomo.users(id) ON DELETE CASCADE;

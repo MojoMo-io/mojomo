@@ -1,5 +1,6 @@
 import * as db from './db';
 import * as claudeService from './claude';
+import { storeReasoningOutcome } from './reasoning-outcome';
 
 interface QueueJob {
   id: string;
@@ -119,12 +120,14 @@ async function processJob(job: QueueJob): Promise<void> {
       ['completed', JSON.stringify(result.response), result.tokensUsed, result.cost, job.reasoning_logs_id]
     );
 
+    // Persist as an ai_response message and extract an idea if idea_score > 0.65
+    const outcome = await storeReasoningOutcome(job.conversation_id, job.reasoning_logs_id, result.response);
     // Update queue job
     await db.query(
       `UPDATE mojomo.message_queue
        SET status = $1, result = $2, completed_at = NOW()
        WHERE id = $3`,
-      ['completed', JSON.stringify(result.response), job.id]
+      ['completed', JSON.stringify({ ...result.response, message_id: outcome.messageId, idea_id: outcome.ideaId }), job.id]
     );
 
     console.log(`Completed reasoning job ${job.id}`);
@@ -142,7 +145,7 @@ async function processJob(job: QueueJob): Promise<void> {
     // Increment attempts
     const updateResult = await db.query(
       `UPDATE mojomo.message_queue
-       SET status = $1, error_message = $2, attempts = attempts + 1
+       SET status = $1, error_message = $2
        WHERE id = $3
        RETURNING attempts, max_attempts`,
       ['pending', error.message, job.id]

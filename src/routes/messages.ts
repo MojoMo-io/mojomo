@@ -13,7 +13,7 @@ const StoreMessageSchema = z.object({
   message_content: z.string().min(1).max(10000),
   message_type: z.enum(['user_message', 'ai_response']),
   reasoning_trace: z.record(z.any()).optional(),
-  idea_score: z.number().min(0).max(100).optional(),
+  idea_score: z.number().min(0).max(1).optional(),
 });
 
 /**

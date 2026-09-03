@@ -8,6 +8,14 @@ import { ConversationMessage } from '../types';
  * Calculate idea score from message text
  * Uses simple heuristic: count keywords related to ideas/insights
  */
+/** Strip control characters and hard-cap length; protects prompts built from message history. */
+export function sanitizeMessageContent(content: string): string {
+  return content
+    .substring(0, 10000)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .trim();
+}
+
 export function calculateIdeaScore(message_text: string): number {
   const idea_keywords = [
     'idea',
@@ -52,8 +60,8 @@ export function calculateIdeaScore(message_text: string): number {
     score += 5;
   }
 
-  // Cap at 100
-  return Math.min(100, score);
+  // Normalise to the spec's 0..1 scale (extraction threshold is 0.65)
+  return Math.min(100, score) / 100;
 }
 
 /**
@@ -67,6 +75,8 @@ export async function storeMessage(
   reasoning_trace?: Record<string, any>,
   idea_score?: number
 ): Promise<ConversationMessage> {
+  message_content = sanitizeMessageContent(message_content);
+  if (!message_content) throw new Error('Message content is empty after sanitization');
   // Verify conversation exists
   const conversation = await conversationService.getConversation(conversation_id);
 
@@ -215,4 +225,5 @@ export default {
   listConversationMessages,
   getIdeaMessages,
   calculateIdeaScore,
+  sanitizeMessageContent,
 };

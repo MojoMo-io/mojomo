@@ -16,11 +16,19 @@ export interface ReasoningResponse {
   quality_score: number;
   next_steps: string[];
   tensions: string[];
+  /** 0.0-1.0: how strongly this exchange contains a novel, actionable idea (spec threshold 0.65) */
+  idea_score?: number;
+  /** Self-contained statement of the idea, beginning with "IDEA:", when idea_score >= 0.65 */
+  idea_hypothesis?: string;
 }
 
 export function buildSystemPrompt(): string {
   return `You are analyzing conversations between avatars collaborating on ideas.
 Identify themes, extract insights, score quality (0-10), suggest next steps, and flag tensions.
+Also include these two fields:
+- "idea_score": a number from 0.0 to 1.0 rating how strongly this exchange contains a novel, concrete, actionable idea worth recording (0.65 or higher means yes).
+- "idea_hypothesis": if idea_score is 0.65 or higher, one self-contained paragraph stating the idea, beginning with the exact prefix "IDEA:"; otherwise an empty string.
+
 Respond in valid JSON only with no additional text.`;
 }
 
@@ -80,7 +88,9 @@ export async function callClaudeReasoning(
 
       const inputTokens = message.usage.input_tokens;
       const outputTokens = message.usage.output_tokens;
-      const cost = (inputTokens / 1000000) * 3 + (outputTokens / 1000000) * 15;
+      const inRate = Number(process.env.CLAUDE_COST_INPUT_PER_MTOK || 3);
+      const outRate = Number(process.env.CLAUDE_COST_OUTPUT_PER_MTOK || 15);
+      const cost = (inputTokens / 1_000_000) * inRate + (outputTokens / 1_000_000) * outRate;
 
       return { response, tokensUsed: inputTokens + outputTokens, cost };
     } catch (error) {

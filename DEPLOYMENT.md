@@ -216,3 +216,19 @@ regressed the Phase 1 forfeiture authorization. They are preserved at tag
 - Load test (spec Layer 4): `npm run load-test` boots the API on :8999 against `mojomo_test`
   and asserts p50<100ms, p97.5<200ms, p99<500ms, errors<1% at 100 req/s.
 - Coverage: `npx jest --coverage` (84% statements at Phase 2 close; spec ≥80%).
+
+## Phase 3 (2026-09-03): two-party tokenomics hardening
+
+- **Product decision:** conversations have a creator (`initiator_avatar_id`) and co-creator (`target_avatar_id`)
+  only. Specialist joins are feature-flagged: `SPECIALISTS_ENABLED=true` re-enables `POST /conversations/:id/specialists`
+  (default off -> 403). See ROADMAP.md.
+- Payouts are atomic: `initiatePayout` locks the conversation row (`FOR UPDATE`), validates against vested minus
+  already-paid tokens inside the same transaction, then inserts. Concurrent double-spend is impossible
+  (tested with 5 and 20 racing requests). Vesting endpoint now reports `paid_out_tokens`; `available_tokens` is net.
+- Vesting is frozen at `ended_at`: forfeited tokens never become withdrawable after a conversation ends.
+- Ended conversations reject new messages, reasoning jobs, specialist joins and a second end with **409**.
+- Dormancy sweep is scheduled in `server.ts` (`DORMANT_CHECK_INTERVAL_MS`, default 6h; `DORMANT_INACTIVITY_DAYS`,
+  default 90; first run 60s after boot).
+- DB pool: `DB_POOL_MAX` (default 20) and `DB_CONNECT_TIMEOUT_MS` (default 10000) so pool starvation fails fast.
+  Ownership/vesting reads inside transactions reuse the transaction's client.
+- Load test now includes the vesting read and the message write path.

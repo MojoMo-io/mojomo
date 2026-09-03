@@ -162,3 +162,19 @@ async function processJob(job: QueueJob): Promise<void> {
 }
 
 export { processJob };
+
+export async function queueMessageForProcessing(
+  messageId: string,
+  conversationId: string
+): Promise<void> {
+  try {
+    await db.query(
+      `INSERT INTO mojomo.message_queue (conversation_id, status)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [conversationId, 'pending']
+    );
+  } catch (error) {
+    console.error(`Error queueing message ${messageId}:`, error);
+  }
+}

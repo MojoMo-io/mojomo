@@ -20,13 +20,10 @@ router.post('/conversations/:id/end', async (req: Request, res: Response) => {
     const result = await forfeitureService.endConversation(
       id,
       payload.avatar_id,
-      'ended_by_initiator' // or ended_by_target based on avatar_id
+      'ended_by_initiator'
     );
 
-    res.json({
-      conversation_id: id,
-      ...result,
-    });
+    res.json(result);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Validation failed', details: error.errors });
@@ -56,7 +53,7 @@ router.get('/conversations/:id/forfeiture-status', async (req: Request, res: Res
       await forfeitureService.calculateConversationVesting(id);
 
     const total_forfeited = forfeiture_breakdown.reduce(
-      (sum, entry) => sum + entry.forfeited_tokens,
+      (sum: number, entry: any) => sum + entry.forfeited_tokens,
       0
     );
 

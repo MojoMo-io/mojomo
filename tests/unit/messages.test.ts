@@ -10,7 +10,7 @@ describe('Idea Score Calculation', () => {
   it('should score high for idea keyword', () => {
     const score = calculateIdeaScore('I have an idea for this problem.');
     expect(score).toBeGreaterThan(0);
-    expect(score).toBeLessThanOrEqual(100);
+    expect(score).toBeLessThanOrEqual(1);
   });
 
   it('should accumulate points for multiple keywords', () => {
@@ -28,7 +28,7 @@ describe('Idea Score Calculation', () => {
     `;
 
     const score = calculateIdeaScore(high_idea_text);
-    expect(score).toBeGreaterThanOrEqual(40);
+    expect(score).toBeGreaterThanOrEqual(0.4);
   });
 
   it('should recognize "would like to propose" phrase', () => {
@@ -66,7 +66,7 @@ describe('Idea Score Calculation', () => {
     `;
 
     const score = calculateIdeaScore(very_long_idea_text);
-    expect(score).toBeLessThanOrEqual(100);
+    expect(score).toBeLessThanOrEqual(1);
   });
 
   it('should be case insensitive', () => {
@@ -106,16 +106,16 @@ describe('Idea Score Calculation', () => {
       const score = calculateIdeaScore(text);
 
       if (expect_score === 'high') {
-        expect(score).toBeGreaterThanOrEqual(10);
+        expect(score).toBeGreaterThanOrEqual(0.1);
       } else {
-        expect(score).toBeLessThanOrEqual(20);
+        expect(score).toBeLessThanOrEqual(0.2);
       }
     });
   });
 });
 
 describe('Idea Score Thresholds', () => {
-  it('should have threshold for idea extraction at 65', () => {
+  it('should have threshold for idea extraction at 0.65 (scores are 0..1)', () => {
     // Messages scoring > 65 should be extracted as ideas
     const high_confidence = `
       I have a novel proposal for solving this.
@@ -124,7 +124,7 @@ describe('Idea Score Thresholds', () => {
     `;
 
     const score = calculateIdeaScore(high_confidence);
-    expect(score).toBeGreaterThan(20);
+    expect(score).toBeGreaterThan(0.2);
   });
 
   it('should not extract low-scoring messages', () => {
@@ -163,7 +163,7 @@ describe('Message Types and Scoring', () => {
 
     const score = calculateIdeaScore(ai_response);
     // AI responses with ideas should score decently
-    expect(score).toBeGreaterThanOrEqual(35);
+    expect(score).toBeGreaterThanOrEqual(0.35);
   });
 
   it('should score user messages (variable idea potential)', () => {
@@ -209,7 +209,7 @@ describe('Idea Score Edge Cases', () => {
       .join(' ');
 
     const score = calculateIdeaScore(long_text);
-    expect(score).toBeLessThanOrEqual(100); // Should cap at 100
+    expect(score).toBeLessThanOrEqual(1); // Should cap at 100
   });
 
   it('should handle special characters', () => {
@@ -230,7 +230,7 @@ describe('Idea Score Edge Cases', () => {
     `;
 
     const score = calculateIdeaScore(text);
-    expect(score).toBeGreaterThanOrEqual(35);
+    expect(score).toBeGreaterThanOrEqual(0.35);
   });
 });
 

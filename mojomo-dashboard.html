@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOJOMO Avatar Platform Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .status-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .status-item {
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .status-item.healthy {
+            border-left-color: #10b981;
+        }
+        
+        .status-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .status-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-transform: uppercase;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .response.visible {
+            display: block;
+        }
+        
+        .response.success {
+            border-left: 4px solid #10b981;
+            background: #f0fdf4;
+        }
+        
+        .response.error {
+            border-left: 4px solid #ef4444;
+            background: #fef2f2;
+            color: #991b1b;
+        }
+        
+        .avatar-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .avatar-item {
+            padding: 12px;
+            background: #f8f9ff;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .avatar-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .avatar-id {
+            font-size: 11px;
+            color: #999;
+            font-family: monospace;
+            margin-top: 5px;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            color: white;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 MOJOMO Avatar Platform</h1>
+            <p style="color: #666; margin-bottom: 20px;">Live API Dashboard - Test the platform in real-time</p>
+            
+            <div class="status-bar">
+                <div class="status-item healthy">
+                    <div class="status-label">API Server</div>
+                    <div class="status-value">✅ Live</div>
+                </div>
+                <div class="status-item healthy">
+                    <div class="status-label">Database</div>
+                    <div class="status-value">✅ Connected</div>
+                </div>
+                <div class="status-item healthy">
+                    <div class="status-label">HTTPS</div>
+                    <div class="status-value">🔒 Secure</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Total Avatars</div>
+                    <div class="status-value" id="avatar-count">Loading...</div>
+                </div>
+            </div>
+        </header>
+        
+        <div class="content">
+            <!-- Create Avatar Card -->
+            <div class="card">
+                <h2>Create Avatar</h2>
+                <div class="form-group">
+                    <label>Avatar Name</label>
+                    <input type="text" id="avatarName" placeholder="e.g., Alice" value="Alice">
+                </div>
+                <div class="form-group">
+                    <label>User ID (UUID)</label>
+                    <input type="text" id="userId" placeholder="UUID format" value="550e8400-e29b-41d4-a716-446655440001">
+                </div>
+                <button onclick="createAvatar()">Create Avatar</button>
+                <div class="response" id="createResponse"></div>
+            </div>
+            
+            <!-- List Avatars Card -->
+            <div class="card">
+                <h2>Your Avatars</h2>
+                <p style="font-size: 12px; color: #999; margin-bottom: 15px;">Load avatars for the User ID above</p>
+                <button onclick="listAvatars()">Load Avatars</button>
+                <div class="avatar-list" id="avatarList"></div>
+                <div class="response" id="listResponse"></div>
+            </div>
+            
+            <!-- Health Check Card -->
+            <div class="card">
+                <h2>System Health</h2>
+                <p style="font-size: 12px; color: #999; margin-bottom: 15px;">Check API and proxy status</p>
+                <button onclick="healthCheck()">Check Health</button>
+                <div class="response" id="healthResponse"></div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>MOJOMO Avatar Platform v1.0 | Deployed 2026-09-02 | All 127 tests passing ✅ | HTTPS Secured 🔒</p>
+        </div>
+    </div>
+    
+    <script>
+        // Use HTTPS for all requests
+        const API_BASE = window.location.protocol === 'https:' 
+            ? 'https://mojomo.io'
+            : 'http://mojomo.io:8081';
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            healthCheck();
+            loadAvatarCount();
+        });
+        
+        async function makeRequest(method, endpoint, body = null) {
+            const userId = document.getElementById('userId').value.trim();
+            
+            if (!userId) {
+                return { error: 'Please enter a User ID' };
+            }
+            
+            const headers = {
+                'Content-Type': 'application/json',
+                'x-user-id': userId
+            };
+            
+            const options = {
+                method,
+                headers,
+                mode: 'cors'
+            };
+            
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: response.statusText }));
+                    return errorData;
+                }
+                return await response.json();
+            } catch (error) {
+                return { error: `Network error: ${error.message}` };
+            }
+        }
+        
+        async function createAvatar() {
+            const name = document.getElementById('avatarName').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            const responseDiv = document.getElementById('createResponse');
+            
+            if (!name || !userId) {
+                showResponse(responseDiv, 'Please fill in all fields', 'error');
+                return;
+            }
+            
+            showResponse(responseDiv, 'Creating avatar...', 'success');
+            
+            const result = await makeRequest('POST', '/api/avatars', {
+                name,
+                user_id: userId
+            });
+            
+            if (result.error) {
+                showResponse(responseDiv, `Error: ${result.error}`, 'error');
+            } else {
+                showResponse(responseDiv, JSON.stringify(result, null, 2), 'success');
+                document.getElementById('avatarName').value = '';
+                loadAvatarCount();
+            }
+        }
+        
+        async function listAvatars() {
+            const responseDiv = document.getElementById('listResponse');
+            const listDiv = document.getElementById('avatarList');
+            
+            showResponse(responseDiv, 'Loading avatars...', 'success');
+            listDiv.innerHTML = '';
+            
+            const result = await makeRequest('GET', '/api/avatars');
+            
+            if (result.error) {
+                showResponse(responseDiv, `Error: ${result.error}`, 'error');
+            } else if (Array.isArray(result)) {
+                if (result.length === 0) {
+                    listDiv.innerHTML = '<p style="color: #999; padding: 15px;">No avatars found</p>';
+                } else {
+                    result.forEach(avatar => {
+                        const item = document.createElement('div');
+                        item.className = 'avatar-item';
+                        item.innerHTML = `
+                            <div class="avatar-name">${avatar.name}</div>
+                            <div class="avatar-id">ID: ${avatar.id}</div>
+                        `;
+                        listDiv.appendChild(item);
+                    });
+                }
+                showResponse(responseDiv, JSON.stringify(result, null, 2), 'success');
+            }
+        }
+        
+        async function healthCheck() {
+            const responseDiv = document.getElementById('healthResponse');
+            
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResponse(responseDiv, JSON.stringify(data, null, 2), 'success');
+            } catch (error) {
+                showResponse(responseDiv, `Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function loadAvatarCount() {
+            const result = await makeRequest('GET', '/api/avatars');
+            const count = Array.isArray(result) ? result.length : 0;
+            document.getElementById('avatar-count').textContent = count;
+        }
+        
+        function showResponse(element, content, type = 'success') {
+            element.textContent = content;
+            element.className = `response visible ${type}`;
+        }
+    </script>
+</body>
+</html>

@@ -1,8 +1,8 @@
-// Main server file
 import express from 'express';
 import cors from 'cors';
 import * as dotenv from 'dotenv';
 import * as db from './services/db';
+import { startJobQueue, stopJobQueue } from './services/job-queue';
 import avatarRoutes from './routes/avatars';
 import conversationRoutes from './routes/conversations';
 import specialistRoutes from './routes/specialists';
@@ -17,18 +17,15 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || '8002');
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
   next();
 });
 
-// Health check
 app.get('/health', async (req, res) => {
   const isHealthy = await db.healthCheck();
   if (isHealthy) {
@@ -38,7 +35,6 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// API routes
 app.use('/api', avatarRoutes);
 app.use('/api', conversationRoutes);
 app.use('/api', specialistRoutes);
@@ -48,18 +44,15 @@ app.use('/api', ideaRoutes);
 app.use('/api', conversationEndRoutes);
 app.use('/api', reasoningRoutes);
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Graceful shutdown
 let isShuttingDown = false;
 
 async function gracefulShutdown() {
@@ -67,6 +60,8 @@ async function gracefulShutdown() {
   isShuttingDown = true;
 
   console.log('\nShutting down gracefully...');
+  await stopJobQueue();
+  
   server.close(async () => {
     await db.closePool();
     console.log('Server shut down');
@@ -76,17 +71,20 @@ async function gracefulShutdown() {
   setTimeout(() => {
     console.error('Forced shutdown after timeout');
     process.exit(1);
-  }, 10000); // 10 second timeout
+  }, 10000);
 }
 
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
-// Start server
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`MOJOMO API server listening on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
+  
+  await startJobQueue(5000, 5).catch(err =>
+    console.error('Failed to start job queue:', err)
+  );
 });
 
 export default app;

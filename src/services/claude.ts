@@ -1,0 +1,84 @@
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+  apiKey: process.env.CLAUDE_API_KEY,
+});
+
+export interface ReasoningRequest {
+  conversation_id: string;
+  messages: Array<{ avatar_id: string; content: string; created_at: Date }>;
+  prompt_override?: string;
+}
+
+export interface ReasoningResponse {
+  themes: string[];
+  insights: string[];
+  quality_score: number;
+  next_steps: string[];
+  tensions: string[];
+}
+
+export function buildSystemPrompt(): string {
+  return `You are analyzing conversations between avatars collaborating on ideas.
+Identify themes, extract insights, score quality (0-10), suggest next steps, and flag tensions.
+Respond in valid JSON only with no additional text.`;
+}
+
+export function buildUserPrompt(
+  messages: Array<{ avatar_id: string; content: string; created_at: Date }>,
+  customPrompt?: string
+): string {
+  const messageContext = messages
+    .slice(-10)
+    .map((msg) => `[${msg.avatar_id}]: ${msg.content}`)
+    .join('\n');
+
+  const basePrompt = `Analyze:\n\n${messageContext}`;
+  return customPrompt ? `${basePrompt}\n\n${customPrompt}` : basePrompt;
+}
+
+export async function callClaudeReasoning(
+  request: ReasoningRequest,
+  maxAttempts: number = 3
+): Promise<{ response: ReasoningResponse; tokensUsed: number; cost: number }> {
+  const systemPrompt = buildSystemPrompt();
+  const userPrompt = buildUserPrompt(request.messages, request.prompt_override);
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const message = await client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+
+      const textContent = message.content.find((block) => block.type === 'text');
+      if (!textContent || textContent.type !== 'text') {
+        throw new Error('No text response');
+      }
+
+      const responseText = textContent.text.trim();
+      const response: ReasoningResponse = JSON.parse(responseText);
+
+      const inputTokens = message.usage.input_tokens;
+      const outputTokens = message.usage.output_tokens;
+      const cost = (inputTokens / 1000000) * 3 + (outputTokens / 1000000) * 15;
+
+      return { response, tokensUsed: inputTokens + outputTokens, cost };
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
+      }
+    }
+  }
+
+  throw lastError || new Error('Failed to get Claude reasoning');
+}
+
+export function estimateTokens(prompt: string): number {
+  return Math.ceil(prompt.length / 4);
+}

@@ -21,6 +21,7 @@ import adminRoutes from './routes/admin';
 import agentApiRoutes from './routes/agentApi';
 import agentClaimPage from './routes/agentClaimPage';
 import invitationsPage from './routes/invitationsPage';
+import taskApiRoutes from './routes/taskApi';
 import openapiRoutes from './routes/openapi';
 import { linkRouter as telegramLinkRoutes, webhookRouter as telegramWebhookRoutes } from './routes/telegram';
 import { ownerRouter as connectionsOwnerRoutes, callbackRouter as connectionsCallbackRoutes } from './routes/connections';
@@ -65,6 +66,7 @@ export function createApp(): express.Application {
   app.use(agentClaimPage);                            // human-facing claim page (HTML)
   app.use(invitationsPage);                           // human-facing invitations list (HTML)
   app.use('/api', agentApiRoutes);                   // agent-facing: Bearer auth, no session cookie
+  app.use('/api', taskApiRoutes);                    // task board: Bearer auth, tethered agents only
   app.use('/api', authRoutes);                       // public: magic-link, verify, check, me, logout
   app.use('/api', attachSession, requireAuth, enforceOwnership);
   for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, ideaSurfacingRoutes, conversationEndRoutes, reasoningRoutes, avatarChatRoutes, adminRoutes, telegramLinkRoutes, connectionsOwnerRoutes]) app.use('/api', r);

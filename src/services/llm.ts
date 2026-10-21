@@ -28,9 +28,29 @@ export interface LlmResponse {
   provider: LlmProvider;
 }
 
+/**
+ * Anthropic is gated behind an explicit, deliberate opt-in.
+ *
+ * Setting LLM_PROVIDER=anthropic is not enough on its own: it also requires
+ * ALLOW_ANTHROPIC=true. That way a stray env edit, a copied .env, or a future
+ * refactor cannot silently start spending on Anthropic. If the guard is missing
+ * we fall back to DeepSeek and log loudly rather than failing the request.
+ */
+export function anthropicAllowed(): boolean {
+  return String(process.env.ALLOW_ANTHROPIC || '').toLowerCase() === 'true';
+}
+
 export function llmProvider(): LlmProvider {
   const p = (process.env.LLM_PROVIDER || 'deepseek').toLowerCase();
-  return p === 'anthropic' ? 'anthropic' : 'deepseek';
+  if (p !== 'anthropic') return 'deepseek';
+  if (!anthropicAllowed()) {
+    console.error(
+      'REFUSED: LLM_PROVIDER=anthropic but ALLOW_ANTHROPIC is not true. ' +
+      'Falling back to DeepSeek. Set ALLOW_ANTHROPIC=true only with explicit permission.'
+    );
+    return 'deepseek';
+  }
+  return 'anthropic';
 }
 
 export function llmModel(): string {

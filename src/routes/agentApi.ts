@@ -49,7 +49,8 @@ const RegisterSchema = z.object({
   human_email: z.string().email().max(320),
 });
 
-const ClaimSchema = z.object({ token: z.string().min(10).max(200) });
+const ClaimSchema = z.object({ token: z.string().min(10).max(200), via: z.enum(['web','email','agent']).optional() });
+const DeclineSchema = z.object({ token: z.string().min(10).max(200), reason: z.string().max(500).optional() });
 
 // ---------------------------------------------------------------- registration
 /**
@@ -110,9 +111,11 @@ router.post('/agent/register', async (req: Request, res: Response) => {
 router.post('/agent/claim', async (req: Request, res: Response) => {
   try {
     const { token } = ClaimSchema.parse(req.body);
+    const via = (req.body?.via === 'email' || req.body?.via === 'agent') ? req.body.via : 'web';
     const out = await agents.acceptInvitation(token, {
       ip: req.ip,
       user_agent: req.headers['user-agent'],
+      via,
     });
     res.json({
       ok: true,
@@ -133,6 +136,29 @@ router.post('/agent/claim', async (req: Request, res: Response) => {
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
     if (e.code === 'EXPIRED') return res.status(410).json({ error: 'This invitation has expired. Ask the agent to register again.' });
     console.error('agent claim failed:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /agent/decline
+ * The human refuses. The agent is never activated and gets no key.
+ * The reason is captured — it is the only product feedback this funnel produces.
+ */
+router.post('/agent/decline', async (req: Request, res: Response) => {
+  try {
+    const { token, reason } = DeclineSchema.parse(req.body);
+    await agents.declineInvitation(token, {
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      reason,
+    });
+    res.json({ ok: true, status: 'declined' });
+  } catch (e: any) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: e.errors });
+    if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
+    if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
+    console.error('agent decline failed:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

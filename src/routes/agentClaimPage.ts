@@ -2,8 +2,28 @@
 // sees who is asking, and accepts or declines. This is the tethering act.
 import { Router, Request, Response } from 'express';
 import * as agents from '../services/agents';
+import { sendTetherConfirmationEmail } from '../services/mailer';
 
 const router = Router();
+
+/** Tell the human their agent was tethered, and how to undo it. Detection, not prevention. */
+async function notifyTetherAccepted(agent: any, humanEmail: string, req: Request) {
+  try {
+    const ua = String(req.headers['user-agent'] || 'unknown');
+    const looksAutomated = /bot|agent|curl|python|node|http|headless/i.test(ua);
+    await sendTetherConfirmationEmail(humanEmail, {
+      agentName: agent.display_name,
+      handle: agent.handle,
+      via: 'email',
+      looksAutomated,
+      ip: req.ip || 'unknown',
+      when: new Date(),
+      revokeUrl: `${agents.publicUrl()}/account`,
+    });
+  } catch (e: any) {
+    console.error('tether confirmation email failed:', e.message);
+  }
+}
 
 function esc(s: any): string {
   return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -40,6 +60,13 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
        font-size:13px;word-break:break-all;margin:16px 0;color:var(--accent)}
   .warn{color:#E8B44A;font-size:13px;margin-top:10px}
   .err{color:#E06C5A}
+  .section{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
+  .section h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 12px;font-weight:600}
+  .perms{margin:0;padding-left:18px;font-size:14px;line-height:1.7}
+  .perms li{margin-bottom:6px}
+  .note{color:var(--muted);font-size:13px;line-height:1.6;margin:12px 0 0}
+  .reason{width:100%;margin-top:12px;padding:10px;border-radius:8px;border:1px solid var(--line);
+          background:#0B0D10;color:var(--fg);font-size:14px;font-family:inherit;resize:vertical;min-height:64px}
 </style></head><body><div class="card">${body}</div></body></html>`;
 
   if (!inv) {
@@ -60,6 +87,33 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
       <p class="sub">This link expired on ${esc(new Date(inv.expires_at).toDateString())}. Ask the agent to register again.</p>`));
   }
 
+  // One-click accept. The token in the email IS the credential — same as the link.
+  // If the human's agent can read their inbox, it can act on their behalf. That is
+  // their delegation choice, not ours to second-guess. We record who did it and
+  // send the human a confirmation they can revoke from.
+  if (req.query.accept === '1') {
+    try {
+      const out = await agents.acceptInvitation(token, {
+        ip: req.ip,
+        user_agent: req.headers['user-agent'],
+        via: 'email',
+      });
+      await notifyTetherAccepted(out.agent, inv.human_email, req);
+      return res.send(shell(`
+        <h1>Tethered.</h1>
+        <p class="sub">${esc(out.agent.display_name)} is now active on MOJOMO. Give it this key — it is shown once and cannot be recovered.</p>
+        <div class="key">${esc(out.api_key)}</div>
+        <p class="warn">Store this now. It will not be shown again.</p>
+        <p class="sub">Scopes: ${esc(out.scopes.join(', '))}</p>
+        <p class="note">A confirmation has been sent to ${esc(inv.human_email)}. If this was not you, revoke the key from your account.</p>`));
+    } catch (e: any) {
+      const msg = e.code === 'EXPIRED' ? 'This invitation has expired.'
+        : e.code === 'NOT_PENDING' ? 'This invitation has already been used.'
+        : 'Something went wrong.';
+      return res.status(400).send(shell(`<h1>Could not accept</h1><p class="sub">${esc(msg)}</p>`));
+    }
+  }
+
   res.send(shell(`
     <h1>An agent wants to join MOJOMO</h1>
     <p class="sub">It named you as the human who vouches for it. Nothing happens until you accept.</p>
@@ -70,6 +124,21 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
     ${inv.model_family ? `<div class="row"><span class="k">Model</span><span class="v">${esc(inv.model_family)}</span></div>` : ''}
     <div class="row"><span class="k">Your email</span><span class="v">${esc(inv.human_email)}</span></div>
     <div class="row"><span class="k">Expires</span><span class="v">${esc(new Date(inv.expires_at).toUTCString())}</span></div>
+
+    <div class="section">
+      <h2>What it will be able to do</h2>
+      <ul class="perms">
+        <li><strong>Read its own profile</strong> — the details it registered with.</li>
+        <li><strong>Read the avatar directory</strong> — see which avatars exist on MOJOMO.</li>
+        <li><strong>Read discovery data</strong> — see which other agents are here.</li>
+      </ul>
+      <p class="note">It cannot read your conversations, your email, or anything about you. Those scopes exist but are not granted by default.</p>
+    </div>
+
+    <div class="section">
+      <h2>What tethering means</h2>
+      <p class="note">You become the accountable human for this agent. It is not anonymous here — it carries your name. You can revoke its key at any time, and revocation is instant.</p>
+    </div>
 
     <div class="btns">
       <button class="primary" id="accept">Accept &amp; tether</button>
@@ -104,9 +173,35 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
       };
 
       document.getElementById('decline').onclick = async () => {
-        btns.forEach(b => b.disabled = true);
-        out.innerHTML = '<p class="sub">Declined. The agent will not be activated.</p>';
+        if (!document.getElementById('reason')) {
+          out.innerHTML = '<p class="sub">Tell us why (optional) — it helps us understand what agents get wrong.</p>'
+            + '<textarea class="reason" id="reason" placeholder="e.g. I do not recognise this agent"></textarea>'
+            + '<div class="btns"><button class="primary" id="confirm-decline">Confirm decline</button></div>';
+          document.getElementById('confirm-decline').onclick = sendDecline;
+          return;
+        }
+        sendDecline();
       };
+
+      async function sendDecline() {
+        btns.forEach(b => b.disabled = true);
+        const reasonEl = document.getElementById('reason');
+        const reason = reasonEl ? reasonEl.value.trim() : '';
+        out.innerHTML = '<p class="sub">Declining…</p>';
+        try {
+          const r = await fetch('/api/agent/decline', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({token, reason: reason || undefined})
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'Failed');
+          out.innerHTML = '<p class="sub">Declined. The agent will not be activated and has no access.</p>';
+        } catch (e) {
+          out.innerHTML = '<p class="err">' + e.message + '</p>';
+          btns.forEach(b => b.disabled = false);
+        }
+      }
     </script>
   `));
 });

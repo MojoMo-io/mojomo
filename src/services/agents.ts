@@ -137,7 +137,7 @@ export async function getInvitation(token: string) {
  */
 export async function acceptInvitation(
   token: string,
-  meta: { ip?: string; user_agent?: string }
+  meta: { ip?: string; user_agent?: string; via?: 'web' | 'email' | 'agent' }
 ): Promise<{ agent: AgentRow; api_key: string; scopes: Scope[] }> {
   const inv = await getInvitation(token);
   if (!inv) throw Object.assign(new Error('Invitation not found'), { code: 'NOT_FOUND' });
@@ -170,12 +170,47 @@ export async function acceptInvitation(
   const agent = agentRes.rows[0] as AgentRow;
 
   await db.query(
-    `UPDATE agent.invitations SET status='accepted', accepted_at=now(), accepted_ip=$1 WHERE id=$2`,
-    [meta.ip || null, inv.id]
+    `UPDATE agent.invitations
+        SET status='accepted', accepted_at=now(), accepted_ip=$1,
+            accepted_via=$2, accepted_user_agent=$3
+      WHERE id=$4`,
+    [meta.ip || null, meta.via || 'web', meta.user_agent || null, inv.id]
+  );
+
+  // Record the tethering act. Not a gate — a trail. If an agent accepted on its
+  // human's behalf from the human's inbox, that is visible here and revocable.
+  await db.query(
+    `INSERT INTO agent.tether_events (agent_id, invitation_id, event, via, ip, user_agent)
+     VALUES ($1,$2,'accepted',$3,$4,$5)`,
+    [agent.id, inv.id, meta.via || 'web', meta.ip || null, meta.user_agent || null]
   );
 
   const { api_key, scopes } = await issueKey(agent.id, DEFAULT_SCOPES, 'initial');
   return { agent, api_key, scopes };
+}
+
+/** Record a human's refusal. The agent is never activated. */
+export async function declineInvitation(
+  token: string,
+  meta: { ip?: string; user_agent?: string; reason?: string }
+): Promise<{ agent_id: string }> {
+  const inv = await getInvitation(token);
+  if (!inv) throw Object.assign(new Error('Invitation not found'), { code: 'NOT_FOUND' });
+  if (inv.status !== 'pending') throw Object.assign(new Error(`Invitation already ${inv.status}`), { code: 'NOT_PENDING' });
+
+  await db.query(
+    `UPDATE agent.invitations
+        SET status='declined', declined_at=now(), decline_reason=$1, accepted_ip=$2
+      WHERE id=$3`,
+    [meta.reason || null, meta.ip || null, inv.id]
+  );
+  await db.query(
+    `INSERT INTO agent.tether_events (agent_id, invitation_id, event, via, ip, user_agent, detail)
+     VALUES ($1,$2,'declined','web',$3,$4,$5)`,
+    [inv.agent_id, inv.id, meta.ip || null, meta.user_agent || null,
+     JSON.stringify({ reason: meta.reason || null })]
+  );
+  return { agent_id: inv.agent_id };
 }
 
 /** Issue a scoped API key. Only active, tethered agents may hold keys. */
@@ -246,6 +281,6 @@ export async function audit(entry: {
 }
 
 export default {
-  registerAgent, getInvitation, acceptInvitation, issueKey, resolveKey, revokeKey,
+  registerAgent, getInvitation, acceptInvitation, declineInvitation, issueKey, resolveKey, revokeKey,
   audit, isValidHandle, hashToken, randomToken, SCOPES, DEFAULT_SCOPES, publicUrl,
 };

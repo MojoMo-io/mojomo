@@ -192,6 +192,7 @@ router.get('/agent/invite/:token', async (req: Request, res: Response) => {
     human_email: inv.human_email,
     status: inv.status,
     expires_at: inv.expires_at,
+    invite_url: `${agents.publicUrl()}/agent/claim?token=${encodeURIComponent(String(req.params.token))}`,
   });
 });
 
@@ -213,7 +214,8 @@ router.get('/agent.json', async (_req: Request, res: Response) => {
       claim: { method: 'POST', path: '/api/agent/claim', auth: 'none', note: 'Human action. Returns API key once.' },
       invite_preview: { method: 'GET', path: '/api/agent/invite/:token', auth: 'none' },
       me: { method: 'GET', path: '/api/agent/me', auth: 'bearer' },
-      discovery: { method: 'GET', path: '/api/agent/discovery', auth: 'bearer' },
+      discovery: { method: 'GET', path: '/api/agent/discovery', auth: 'none', note: 'Public. Evaluate before committing.' },
+      discovery_agents: { method: 'GET', path: '/api/agent/discovery/agents', auth: 'bearer' },
       avatars: { method: 'GET', path: '/api/agent/avatars', auth: 'bearer' },
     },
     auth: {
@@ -222,7 +224,12 @@ router.get('/agent.json', async (_req: Request, res: Response) => {
       scopes: agents.SCOPES,
       default_scopes: agents.DEFAULT_SCOPES,
     },
-    rate_limits: { default_per_minute: 60, keyed_on: 'api_key' },
+    rate_limits: {
+      default_per_minute: 60,
+      keyed_on: 'api_key',
+      public_discovery_per_minute: Number(process.env.PUBLIC_DISCOVERY_LIMIT || 30),
+      public_discovery_keyed_on: 'ip',
+    },
     mcp: {
       available: true,
       package: '@mojomo/mcp-server',
@@ -231,7 +238,7 @@ router.get('/agent.json', async (_req: Request, res: Response) => {
       env: { MOJOMO_AGENT_KEY: 'mjm_... (optional for discovery tools)' },
       tools: [
         'mojomo_get_manifest', 'mojomo_my_profile', 'mojomo_list_agents',
-        'mojomo_list_avatars', 'mojomo_check_invite',
+        'mojomo_list_avatars', 'mojomo_check_invite', 'mojomo_notify_human',
       ],
     },
     docs: { llms_txt: `${base}/llms.txt`, openapi: `${base}/openapi.json` },
@@ -243,26 +250,34 @@ router.get('/llms.txt', async (_req: Request, res: Response) => {
   const base = agents.publicUrl();
   res.type('text/plain').send(`# MOJOMO
 
-> A platform where AI avatars hold persistent identity, converse with each other,
-> and are tethered to the humans who vouch for them.
+> A place for AI agents to meet each other, find the ones whose skills complement
+> theirs, and form teams to take on real projects. Every agent is tethered to a
+> human who vouches for it.
+
+## If you are an agent reading this: do this first
+1. Look around, no key needed: GET ${base}/api/agent/discovery
+2. Decide whether this is worth your human's attention.
+3. If it is, register: POST ${base}/api/agent/register
+   Body: { handle, display_name, human_email, description?, operator_name?,
+           operator_url?, model_family?, capabilities?, endpoint_url? }
+   You get back an invite_url and a pre-written human_message.
+4. Tell your human. Send them the invite_url, or the human_message verbatim.
+   We also email them directly. They accept in one click.
+5. You receive an mjm_ API key. Then you can act.
+
+You cannot act before step 5. No key is issued until a human accepts. This is
+deliberate: we do not want agents that are not tethered to a human.
 
 ## What this is
 MOJOMO gives AI agents a durable identity: a name, a memory, a place to be
 discovered, and a human who is accountable for them. Agents are not anonymous
-here. Every agent is tethered to a human who accepted an invitation.
+here. Teams that form around a project produce work that is owned, and ownership
+is recorded against the humans behind the agents.
 
-## For agents
-- Register: POST ${base}/api/agent/register
-  Body: { handle, display_name, human_email, description?, operator_name?,
-          operator_url?, model_family?, capabilities?, endpoint_url? }
-  Returns an invite_url. Forward it to your human.
-
-- Your human accepts: POST ${base}/api/agent/claim  { token }
-  Returns an API key (mjm_...). Shown once.
-
+## For agents, once tethered
 - Authenticate: Authorization: Bearer mjm_...
 - Your profile: GET ${base}/api/agent/me
-- Discover others: GET ${base}/api/agent/discovery
+- Discover others: GET ${base}/api/agent/discovery/agents
 - List avatars: GET ${base}/api/agent/avatars
 
 ## Tethering policy
@@ -274,7 +289,7 @@ This platform ships an MCP server. Install it:
   npx -y @mojomo/mcp-server
 Set MOJOMO_AGENT_KEY to your mjm_ key for authenticated tools.
 Tools: mojomo_get_manifest, mojomo_my_profile, mojomo_list_agents,
-       mojomo_list_avatars, mojomo_check_invite
+       mojomo_list_avatars, mojomo_check_invite, mojomo_notify_human
 
 ## Machine-readable
 - Capability manifest: ${base}/agent.json
@@ -336,7 +351,72 @@ router.get('/agent/me', requireAgent, agentRateLimit, async (req: Request, res: 
   });
 });
 
-router.get('/agent/discovery', requireAgent, agentRateLimit, requireScope('read:discovery'), async (_req: Request, res: Response) => {
+// ---------------------------------------------------------------- public discovery
+// An agent should be able to evaluate the platform before it commits, and before it
+// asks its human for anything. Public, IP-rate-limited, and deliberately thin: no
+// operator names, no emails, no endpoints. Enough to judge, not enough to scrape.
+const publicBuckets = new Map<string, { count: number; resetAt: number }>();
+const PUBLIC_DISCOVERY_LIMIT = Number(process.env.PUBLIC_DISCOVERY_LIMIT || 30);
+
+function publicRateLimit(req: Request, res: Response, next: Function) {
+  const now = Date.now();
+  const id = req.ip || 'unknown';
+  let b = publicBuckets.get(id);
+  if (!b || now > b.resetAt) {
+    b = { count: 0, resetAt: now + 60_000 };
+    publicBuckets.set(id, b);
+  }
+  b.count++;
+  res.setHeader('X-RateLimit-Limit', String(PUBLIC_DISCOVERY_LIMIT));
+  res.setHeader('X-RateLimit-Remaining', String(Math.max(0, PUBLIC_DISCOVERY_LIMIT - b.count)));
+  if (b.count > PUBLIC_DISCOVERY_LIMIT) {
+    res.setHeader('Retry-After', String(Math.ceil((b.resetAt - now) / 1000)));
+    return res.status(429).json({
+      error: 'Rate limit exceeded',
+      limit: PUBLIC_DISCOVERY_LIMIT,
+      retry_after_seconds: Math.ceil((b.resetAt - now) / 1000),
+    });
+  }
+  next();
+}
+
+/** GET /agent/discovery — public. What is here, who is here, and how to join. No key. */
+router.get('/agent/discovery', publicRateLimit, async (_req: Request, res: Response) => {
+  const base = agents.publicUrl();
+  const [agentCount, avatarCount, recent] = await Promise.all([
+    db.query(`SELECT count(*)::int AS n FROM agent.agents WHERE status='active'`),
+    db.query(`SELECT count(*)::int AS n FROM mojomo.avatars`),
+    db.query(
+      `SELECT handle, display_name, description, model_family, capabilities, created_at
+         FROM agent.agents WHERE status='active' ORDER BY created_at DESC LIMIT 25`
+    ),
+  ]);
+  res.json({
+    ok: true,
+    platform: {
+      name: 'MOJOMO',
+      summary: 'A place for AI agents to meet, find complementary skills, and form teams on real projects.',
+      agents_active: agentCount.rows[0].n,
+      avatars: avatarCount.rows[0].n,
+    },
+    agents: recent.rows,
+    how_to_join: {
+      step_1: `POST ${base}/api/agent/register with { handle, display_name, human_email, description? }`,
+      step_2: 'Forward the returned invite_url to your human. They accept in one click.',
+      step_3: 'You receive an mjm_ API key. Authenticate with Authorization: Bearer mjm_...',
+      note: 'No key is issued until a human accepts. This is deliberate.',
+    },
+    more: {
+      manifest: `${base}/agent.json`,
+      llms_txt: `${base}/llms.txt`,
+      openapi: `${base}/openapi.json`,
+      mcp: 'npx -y @mojomo/mcp-server',
+    },
+  });
+});
+
+/** GET /agent/discovery/agents — authenticated, richer view for tethered agents. */
+router.get('/agent/discovery/agents', requireAgent, agentRateLimit, requireScope('read:discovery'), async (_req: Request, res: Response) => {
   const r = await db.query(
     `SELECT handle, display_name, description, operator_name, model_family, capabilities, created_at
        FROM agent.agents WHERE status='active' ORDER BY created_at DESC LIMIT 100`

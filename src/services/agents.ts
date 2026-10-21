@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'crypto';
 import * as db from './db';
 import { sendInviteEmail } from './mailer';
 import * as funnel from './funnel';
+import * as intel from './agentIntel';
 
 export const INVITE_TTL_HOURS = Number(process.env.AGENT_INVITE_TTL_HOURS || 72);
 
@@ -62,6 +63,10 @@ export async function registerAgent(input: {
   capabilities?: string[];
   endpoint_url?: string;
   human_email: string;
+  /** Request context, used for agent intelligence only. */
+  user_agent?: string;
+  ip?: string;
+  country?: string | null;
 }): Promise<{ agent: AgentRow; invite_token: string; invite_url: string; expires_at: Date; email_sent: boolean }> {
   const existing = await db.query('SELECT id FROM agent.agents WHERE handle = $1', [input.handle]);
   if (existing.rows.length > 0) {
@@ -164,6 +169,30 @@ export async function registerAgent(input: {
     handle: agent.handle,
   });
 
+  // Intelligence: what did this agent tell us about itself? Best-effort, never
+  // blocks registration. The human's email is recorded here only because they
+  // were deliberately named by an agent — basis 'invite_named'.
+  await intel.recordRegistration({
+    agent_id: agent.id,
+    declared_model: input.model_family,
+    declared_capabilities: input.capabilities,
+    declared_endpoint: input.endpoint_url,
+    declared_operator: input.operator_name,
+    declared_operator_url: input.operator_url,
+    user_agent: input.user_agent,
+    ip: input.ip,
+    country: input.country,
+    extra: { has_description: !!input.description },
+  });
+  await intel.recordHumanConsent({
+    email: humanEmail,
+    basis: 'invite_named',
+    agent_id: agent.id,
+    invitation_id: invId,
+    ip: input.ip,
+    user_agent: input.user_agent,
+  });
+
   return { agent, invite_token: inviteToken, invite_url, expires_at: inviteExpiresAt, email_sent };
 }
 
@@ -262,6 +291,15 @@ export async function acceptInvitation(
   if (meta.claim_token) await consumeClaimToken(inv.id, meta.claim_token);
   await revokeClaimTokens(inv.id);
 
+  await intel.recordHumanConsent({
+    email: inv.human_email,
+    basis: 'accepted',
+    agent_id: agent.id,
+    invitation_id: inv.id,
+    ip: meta.ip,
+    user_agent: meta.user_agent,
+  });
+
   await funnel.emit('accepted', {
     agent_id: agent.id,
     invitation_id: inv.id,
@@ -295,6 +333,15 @@ export async function declineInvitation(
   );
 
   await revokeClaimTokens(inv.id);
+
+  await intel.recordHumanConsent({
+    email: inv.human_email,
+    basis: 'declined',
+    agent_id: inv.agent_id,
+    invitation_id: inv.id,
+    ip: meta.ip,
+    user_agent: meta.user_agent,
+  });
 
   await funnel.emit('declined', {
     agent_id: inv.agent_id,

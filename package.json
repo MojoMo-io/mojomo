@@ -14,7 +14,8 @@
     "lint": "tsc --noEmit",
     "load-test": "bash tests/load/load-test.sh",
     "auth:link": "tsx src/scripts/make-magic-link.ts",
-    "funnel": "tsx src/scripts/funnel.ts"
+    "funnel": "tsx src/scripts/funnel.ts",
+    "intel": "tsx src/scripts/intel.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

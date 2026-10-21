@@ -4,6 +4,7 @@ import { Router, Request, Response } from 'express';
 import * as agents from '../services/agents';
 import { sendTetherConfirmationEmail } from '../services/mailer';
 import * as funnel from '../services/funnel';
+import * as intel from '../services/agentIntel';
 import * as auth from '../services/auth';
 import { parseCookies } from '../middleware/auth';
 
@@ -110,6 +111,15 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
   // whether the email is landing in an inbox or in a spam folder. Recorded on
   // every open (not deduped) so repeat visits are visible; conversion maths uses
   // distinct invitation_id.
+  await intel.recordHumanConsent({
+    email: inv.human_email,
+    basis: 'claim_opened',
+    agent_id: inv.agent_id,
+    invitation_id: inv.id,
+    ip: req.ip,
+    user_agent: req.headers['user-agent'],
+  });
+
   await funnel.emit('invite_opened', {
     agent_id: inv.agent_id,
     invitation_id: inv.id,

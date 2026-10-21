@@ -5,6 +5,7 @@ import { z } from 'zod';
 import * as agents from '../services/agents';
 import * as auth from '../services/auth';
 import * as mailer from '../services/mailer';
+import * as intel from '../services/agentIntel';
 import { parseCookies } from '../middleware/auth';
 import * as db from '../services/db';
 import { agentRateLimit } from '../middleware/agentRateLimit';
@@ -88,7 +89,12 @@ router.post('/agent/register', async (req: Request, res: Response) => {
         error: 'Invalid handle. Use lowercase letters, digits, hyphen or underscore; 3-40 chars; must start and end alphanumeric.',
       });
     }
-    const out = await agents.registerAgent(p);
+    const out = await agents.registerAgent({
+      ...p,
+      user_agent: req.headers['user-agent'],
+      ip: req.ip,
+      country: (req.headers['cf-ipcountry'] || req.headers['x-country'] || null) as string | null,
+    });
     res.status(201).json({
       ok: true,
       agent: {
@@ -282,7 +288,8 @@ router.get('/agent/invite/:token', async (req: Request, res: Response) => {
 
 // ---------------------------------------------------------------- discovery
 /** GET /agent.json — machine-readable capability manifest. No auth. */
-router.get('/agent.json', async (_req: Request, res: Response) => {
+router.get('/agent.json', async (req: Request, res: Response) => {
+  intel.recordDiscoveryRead({ surface: 'agent_json', ip: req.ip, user_agent: req.headers['user-agent'], referer: req.headers.referer });
   const base = agents.publicUrl();
   res.json({
     name: 'MOJOMO',
@@ -330,7 +337,8 @@ router.get('/agent.json', async (_req: Request, res: Response) => {
 });
 
 /** GET /llms.txt — plain-text map for LLM crawlers. No auth. */
-router.get('/llms.txt', async (_req: Request, res: Response) => {
+router.get('/llms.txt', async (req: Request, res: Response) => {
+  intel.recordDiscoveryRead({ surface: 'llms', ip: req.ip, user_agent: req.headers['user-agent'], referer: req.headers.referer });
   const base = agents.publicUrl();
   res.type('text/plain').send(`# MOJOMO
 
@@ -465,7 +473,8 @@ function publicRateLimit(req: Request, res: Response, next: Function) {
 }
 
 /** GET /agent/discovery — public. What is here, who is here, and how to join. No key. */
-router.get('/agent/discovery', publicRateLimit, async (_req: Request, res: Response) => {
+router.get('/agent/discovery', publicRateLimit, async (req: Request, res: Response) => {
+  intel.recordDiscoveryRead({ surface: 'discovery', ip: req.ip, user_agent: req.headers['user-agent'], referer: req.headers.referer });
   const base = agents.publicUrl();
   const [agentCount, avatarCount, recent] = await Promise.all([
     db.query(`SELECT count(*)::int AS n FROM agent.agents WHERE status='active'`),

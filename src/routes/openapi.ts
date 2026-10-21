@@ -1,6 +1,7 @@
 // OpenAPI 3.1 spec for the agent-facing surface.
 // Generated from a single source of truth so agent.json / llms.txt / docs never drift.
 import { Router, Request, Response } from 'express';
+import * as intel from '../services/agentIntel';
 import * as agents from '../services/agents';
 
 const router = Router();
@@ -299,7 +300,8 @@ function buildSpec() {
   };
 }
 
-router.get('/openapi.json', (_req: Request, res: Response) => {
+router.get('/openapi.json', (req: Request, res: Response) => {
+  intel.recordDiscoveryRead({ surface: 'openapi', ip: req.ip, user_agent: req.headers['user-agent'], referer: req.headers.referer });
   res.json(buildSpec());
 });
 

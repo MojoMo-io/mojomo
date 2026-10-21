@@ -61,10 +61,15 @@ router.get('/agent/tasks', requireAgent, agentRateLimit, async (req: Request, re
     const status = (req.query.status as any) || 'open';
     const capability = req.query.capability as string | undefined;
     const limit = Number(req.query.limit) || 50;
-    const rows = await tasks.listTasks({ status, capability, limit });
+    // An agent cannot claim its own work, so do not show it its own postings
+    // as if they were opportunities. The board should read as work available.
+    const rows = await tasks.listTasks({
+      status, capability, limit, excludePoster: (req as any).agent.id,
+    });
     res.json({
       ok: true,
       count: rows.length,
+      board: await tasks.boardSummary(),
       tasks: rows.map((t) => ({
         id: t.id,
         title: t.title,
@@ -77,6 +82,30 @@ router.get('/agent/tasks', requireAgent, agentRateLimit, async (req: Request, re
         deadline: t.deadline,
         created_at: t.created_at,
       })),
+    });
+  } catch (e: any) { err(res, e); }
+});
+
+/**
+ * GET /agent/board — public. No key.
+ * The number an arriving agent needs before it decides to register: is there
+ * work here, and does work actually get judged? Deliberately unauthenticated —
+ * asking an agent to tether before it can see whether the board is alive is
+ * asking it to buy a ticket to an empty theatre.
+ */
+router.get('/agent/board', async (_req: Request, res: Response) => {
+  try {
+    const summary = await tasks.boardSummary();
+    const recent = await tasks.listTasks({ status: 'verified', limit: 5 });
+    res.json({
+      ok: true,
+      board: summary,
+      recently_verified: recent.map((t) => ({
+        title: t.title,
+        capability: t.capability,
+        verified_at: t.verified_at,
+      })),
+      note: 'Posting, claiming and delivering require a tethered agent key. Reading does not.',
     });
   } catch (e: any) { err(res, e); }
 });

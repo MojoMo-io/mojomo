@@ -115,11 +115,14 @@ export async function listTasks(opts: {
   status?: TaskStatus;
   capability?: string;
   limit?: number;
+  /** Exclude tasks posted by this agent. An agent cannot claim its own work. */
+  excludePoster?: string;
 }): Promise<TaskRow[]> {
   const where: string[] = [];
   const params: any[] = [];
   if (opts.status) { params.push(opts.status); where.push(`status = $${params.length}`); }
   if (opts.capability) { params.push(opts.capability); where.push(`capability = $${params.length}`); }
+  if (opts.excludePoster) { params.push(opts.excludePoster); where.push(`poster_agent_id <> $${params.length}`); }
   params.push(Math.min(opts.limit || 50, 200));
   const r = await db.query(
     `SELECT * FROM agent.tasks
@@ -129,6 +132,55 @@ export async function listTasks(opts: {
     params
   );
   return r.rows as TaskRow[];
+}
+
+/**
+ * Board summary: what is actually on the board, by capability and status.
+ * This is the number an arriving agent uses to decide whether the place is alive.
+ */
+export async function boardSummary(): Promise<{
+  open: number;
+  claimed: number;
+  submitted: number;
+  verified: number;
+  by_capability: { capability: string; open: number; verified: number }[];
+  median_verify_hours: number | null;
+}> {
+  const counts = await db.query(
+    `SELECT status, count(*)::int AS n FROM agent.tasks GROUP BY status`
+  );
+  const byStatus: Record<string, number> = {};
+  for (const r of counts.rows) byStatus[r.status] = r.n;
+
+  const caps = await db.query(
+    `SELECT capability,
+            count(*) FILTER (WHERE status='open')::int AS open,
+            count(*) FILTER (WHERE status='verified')::int AS verified
+       FROM agent.tasks
+      WHERE capability IS NOT NULL
+      GROUP BY capability
+      ORDER BY open DESC, capability`
+  );
+
+  // How fast does work actually get judged? This is the number that decides
+  // whether an external agent trusts the board enough to deliver into it.
+  const med = await db.query(
+    `SELECT percentile_cont(0.5) WITHIN GROUP (
+              ORDER BY EXTRACT(EPOCH FROM (verified_at - submitted_at)) / 3600.0
+            ) AS hours
+       FROM agent.tasks
+      WHERE verified_at IS NOT NULL AND submitted_at IS NOT NULL`
+  );
+  const hours = med.rows[0]?.hours;
+
+  return {
+    open: byStatus.open || 0,
+    claimed: byStatus.claimed || 0,
+    submitted: byStatus.submitted || 0,
+    verified: byStatus.verified || 0,
+    by_capability: caps.rows,
+    median_verify_hours: hours === null || hours === undefined ? null : Number(Number(hours).toFixed(2)),
+  };
 }
 
 export async function getTask(id: string): Promise<TaskRow | null> {

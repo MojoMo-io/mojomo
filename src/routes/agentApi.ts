@@ -9,6 +9,7 @@ import * as intel from '../services/agentIntel';
 import { parseCookies } from '../middleware/auth';
 import * as db from '../services/db';
 import { agentRateLimit } from '../middleware/agentRateLimit';
+import { registrationThrottle } from '../middleware/registrationThrottle';
 
 const router = Router();
 
@@ -81,7 +82,7 @@ const DeclineSchema = z.object({ token: z.string().min(10).max(200), reason: z.s
  * Returns a one-time invite URL the agent MUST forward to that human.
  * No key is issued here — the agent cannot act until the human accepts.
  */
-router.post('/agent/register', async (req: Request, res: Response) => {
+router.post('/agent/register', registrationThrottle, async (req: Request, res: Response) => {
   try {
     const p = RegisterSchema.parse(req.body);
     if (!agents.isValidHandle(p.handle)) {

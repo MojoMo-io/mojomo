@@ -3,6 +3,9 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as agents from '../services/agents';
+import * as auth from '../services/auth';
+import * as mailer from '../services/mailer';
+import { parseCookies } from '../middleware/auth';
 import * as db from '../services/db';
 import { agentRateLimit } from '../middleware/agentRateLimit';
 
@@ -62,7 +65,12 @@ const RegisterSchema = z.object({
   human_email: z.string().email().max(320),
 });
 
-const ClaimSchema = z.object({ token: z.string().min(10).max(200), via: z.enum(['web','email','agent']).optional() });
+const ClaimSchema = z.object({
+  token: z.string().min(10).max(200),
+  claim_token: z.string().min(20).max(200).optional(),
+  via: z.enum(['web','email','agent']).optional(),
+});
+const ClaimStartSchema = z.object({ token: z.string().min(10).max(200) });
 const DeclineSchema = z.object({ token: z.string().min(10).max(200), reason: z.string().max(500).optional() });
 
 // ---------------------------------------------------------------- registration
@@ -117,18 +125,88 @@ router.post('/agent/register', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /agent/claim/start
+ * Step 1 of claiming. The invite token says WHICH invitation; this sends a
+ * single-use link to the named human's inbox to prove WHO is claiming.
+ *
+ * Shortcut: if the caller already has a session whose email matches the
+ * invitation, identity is already proven and we skip the email entirely. That
+ * keeps returning humans at one click while strangers still get verified.
+ */
+router.post('/agent/claim/start', async (req: Request, res: Response) => {
+  try {
+    const { token } = ClaimStartSchema.parse(req.body);
+    const inv = await agents.getInvitation(token);
+    if (!inv) return res.status(404).json({ error: 'Invitation not found.' });
+    if (inv.status !== 'pending') return res.status(409).json({ error: `Invitation already ${inv.status}` });
+    if (new Date(inv.expires_at) < new Date()) {
+      return res.status(410).json({ error: 'This invitation has expired. Ask the agent to register again.' });
+    }
+
+    // Session shortcut: the browser already proved it controls this inbox.
+    const session = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
+    if (session && session.email.toLowerCase() === String(inv.human_email).toLowerCase()) {
+      return res.json({
+        ok: true,
+        verified: true,
+        identity_via: 'session',
+        message: 'You are signed in as the named human. You can accept now.',
+      });
+    }
+
+    const claim = await agents.createClaimToken(inv.id);
+    const url = `${agents.publicUrl()}/agent/claim?token=${encodeURIComponent(token)}&claim=${encodeURIComponent(claim.token)}`;
+    const sent = await mailer.sendClaimLinkEmail(inv.human_email, {
+      agentName: inv.display_name,
+      handle: inv.handle,
+      url,
+      minutes: agents.CLAIM_TTL_MIN,
+    });
+
+    if (sent.provider === 'smtp' && !sent.accepted) {
+      return res.status(503).json({ error: 'We could not send the confirmation email right now. Try again in a few minutes.' });
+    }
+
+    const body: any = {
+      ok: true,
+      verified: false,
+      message: `We sent a confirmation link to ${inv.human_email}. It works once and expires in ${agents.CLAIM_TTL_MIN} minutes.`,
+    };
+    // Console provider means mail is not configured; surface the link so the
+    // flow is still completable in dev and in tests.
+    if (sent.provider === 'console' && process.env.NODE_ENV !== 'production') body.debug_claim_url = url;
+    res.json(body);
+  } catch (e: any) {
+    if (e instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: e.errors });
+    console.error('agent claim start failed:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * POST /agent/claim
- * The human opens the invite link and accepts. This is the tethering act.
+ * Step 2 of claiming, and the tethering act itself. Requires either a valid
+ * single-use claim_token or a session matching the invitation's human_email.
  * Returns the agent's API key — shown exactly once.
  */
 router.post('/agent/claim', async (req: Request, res: Response) => {
   try {
-    const { token } = ClaimSchema.parse(req.body);
+    const { token, claim_token } = ClaimSchema.parse(req.body);
     const via = (req.body?.via === 'email' || req.body?.via === 'agent') ? req.body.via : 'web';
+
+    // Prove identity: session match, or a claim token bound to this invitation.
+    const inv = await agents.getInvitation(token);
+    if (!inv) return res.status(404).json({ error: 'Invitation not found.' });
+
+    const session = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
+    const sessionMatches = !!session && session.email.toLowerCase() === String(inv.human_email).toLowerCase();
+
     const out = await agents.acceptInvitation(token, {
       ip: req.ip,
       user_agent: req.headers['user-agent'],
       via,
+      claim_token,
+      identity_via: sessionMatches ? 'session' : 'claim_link',
     });
     res.json({
       ok: true,
@@ -148,6 +226,12 @@ router.post('/agent/claim', async (req: Request, res: Response) => {
     if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
     if (e.code === 'EXPIRED') return res.status(410).json({ error: 'This invitation has expired. Ask the agent to register again.' });
+    if (e.code === 'CLAIM_REQUIRED') {
+      return res.status(403).json({
+        error: 'Confirm it is you first.',
+        hint: 'POST /api/agent/claim/start with the same token. We will email a single-use confirmation link to the address on the invitation.',
+      });
+    }
     console.error('agent claim failed:', e);
     res.status(500).json({ error: 'Internal server error' });
   }

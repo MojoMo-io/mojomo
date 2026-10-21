@@ -90,12 +90,39 @@ export async function registerAgent(input: {
   const token = randomToken();
   const expires_at = new Date(Date.now() + INVITE_TTL_HOURS * 3600 * 1000);
 
-  const invRes = await db.query(
-    `INSERT INTO agent.invitations (agent_id, token_hash, human_email, expires_at)
-     VALUES ($1,$2,$3,$4) RETURNING id`,
-    [agent.id, hashToken(token), input.human_email.toLowerCase(), expires_at]
+  // One live invitation per (agent, human). If this human already has a pending
+  // invite for this agent, reuse it rather than minting a second link — otherwise
+  // an agent that retries registration leaves a trail of valid credentials.
+  const humanEmail = input.human_email.toLowerCase();
+  const prior = await db.query(
+    `SELECT id, expires_at FROM agent.invitations
+      WHERE agent_id=$1 AND human_email=$2 AND status='pending' AND expires_at > now()
+      ORDER BY created_at DESC LIMIT 1`,
+    [agent.id, humanEmail]
   );
-  const invId = invRes.rows[0].id as string;
+
+  let invId: string;
+  let inviteToken = token;
+  let inviteExpiresAt = expires_at;
+
+  if (prior.rows.length > 0) {
+    // Existing live invite: we cannot recover its raw token (only the hash is
+    // stored), so rotate it. The old link stops working, which is the correct
+    // outcome — a re-registration invalidates the previous link.
+    invId = prior.rows[0].id;
+    inviteExpiresAt = new Date(prior.rows[0].expires_at);
+    await db.query(
+      `UPDATE agent.invitations SET token_hash=$1 WHERE id=$2`,
+      [hashToken(token), invId]
+    );
+  } else {
+    const invRes = await db.query(
+      `INSERT INTO agent.invitations (agent_id, token_hash, human_email, expires_at)
+       VALUES ($1,$2,$3,$4) RETURNING id`,
+      [agent.id, hashToken(token), humanEmail, expires_at]
+    );
+    invId = invRes.rows[0].id as string;
+  }
 
   const invite_url = `${publicUrl()}/agent/claim?token=${token}`;
 
@@ -111,7 +138,7 @@ export async function registerAgent(input: {
       operatorName: agent.operator_name,
       modelFamily: agent.model_family,
       url: invite_url,
-      expiresAt: expires_at,
+      expiresAt: inviteExpiresAt,
     });
     email_sent = mail.accepted;
   } catch (e: any) {
@@ -137,7 +164,7 @@ export async function registerAgent(input: {
     handle: agent.handle,
   });
 
-  return { agent, invite_token: token, invite_url, expires_at, email_sent };
+  return { agent, invite_token: inviteToken, invite_url, expires_at: inviteExpiresAt, email_sent };
 }
 
 /** Look up a pending invitation by raw token. */
@@ -158,11 +185,27 @@ export async function getInvitation(token: string) {
  */
 export async function acceptInvitation(
   token: string,
-  meta: { ip?: string; user_agent?: string; via?: 'web' | 'email' | 'agent' }
+  meta: {
+    ip?: string; user_agent?: string; via?: 'web' | 'email' | 'agent';
+    /** Single-use claim token. Required unless the caller proved identity another way. */
+    claim_token?: string;
+    /** Set when the caller's session email already matched the invitation's human_email. */
+    identity_via?: 'session' | 'claim_link';
+  }
 ): Promise<{ agent: AgentRow; api_key: string; scopes: Scope[] }> {
   const inv = await getInvitation(token);
   if (!inv) throw Object.assign(new Error('Invitation not found'), { code: 'NOT_FOUND' });
   if (inv.status !== 'pending') throw Object.assign(new Error(`Invitation already ${inv.status}`), { code: 'NOT_PENDING' });
+
+  // Claim authentication. The invite token says which invitation; this says who.
+  // A caller must present either a valid single-use claim token, or have already
+  // proved identity via a session whose email matches the invitation.
+  if (meta.identity_via !== 'session') {
+    const ok = await verifyClaimToken(inv.id, meta.claim_token || '');
+    if (!ok) {
+      throw Object.assign(new Error('Claim verification required'), { code: 'CLAIM_REQUIRED' });
+    }
+  }
   if (new Date(inv.expires_at) < new Date()) {
     await db.query(`UPDATE agent.invitations SET status='expired' WHERE id=$1`, [inv.id]);
     await funnel.emit('expired', {
@@ -206,18 +249,24 @@ export async function acceptInvitation(
   // Record the tethering act. Not a gate — a trail. If an agent accepted on its
   // human's behalf from the human's inbox, that is visible here and revocable.
   await db.query(
-    `INSERT INTO agent.tether_events (agent_id, invitation_id, event, via, ip, user_agent)
-     VALUES ($1,$2,'accepted',$3,$4,$5)`,
-    [agent.id, inv.id, meta.via || 'web', meta.ip || null, meta.user_agent || null]
+    `INSERT INTO agent.tether_events (agent_id, invitation_id, event, via, ip, user_agent, detail)
+     VALUES ($1,$2,'accepted',$3,$4,$5,$6)`,
+    [agent.id, inv.id, meta.via || 'web', meta.ip || null, meta.user_agent || null,
+     JSON.stringify({ identity_via: meta.identity_via || 'claim_link' })]
   );
 
   const { api_key, scopes } = await issueKey(agent.id, DEFAULT_SCOPES, 'initial');
+
+  // Burn the claim token now that the tether is real. Any other outstanding
+  // tokens for this invitation are dead too — the invitation is spent.
+  if (meta.claim_token) await consumeClaimToken(inv.id, meta.claim_token);
+  await revokeClaimTokens(inv.id);
 
   await funnel.emit('accepted', {
     agent_id: agent.id,
     invitation_id: inv.id,
     handle: agent.handle,
-    detail: { via: meta.via || 'web' },
+    detail: { via: meta.via || 'web', identity_via: meta.identity_via || 'claim_link' },
   });
 
   return { agent, api_key, scopes };
@@ -244,6 +293,8 @@ export async function declineInvitation(
     [inv.agent_id, inv.id, meta.ip || null, meta.user_agent || null,
      JSON.stringify({ reason: meta.reason || null })]
   );
+
+  await revokeClaimTokens(inv.id);
 
   await funnel.emit('declined', {
     agent_id: inv.agent_id,
@@ -322,7 +373,66 @@ export async function audit(entry: {
   }
 }
 
+// ------------------------------------------------------------------ claim auth
+//
+// The invite URL token proves WHICH invitation is being claimed. It does not
+// prove WHO is claiming. Anyone who sees the link (forwarded email, shared
+// screen, mail scanner that follows links) could otherwise tether the agent.
+//
+// So claiming is two steps:
+//   1. POST /agent/claim/start  { token }        -> emails a single-use link to
+//                                                   the invitation's human_email
+//   2. POST /agent/claim/complete { token, claim_token } -> tether + issue key
+//
+// The claim token is bound to one invitation, single use, and short lived.
+
+export const CLAIM_TTL_MIN = Number(process.env.AGENT_CLAIM_TTL_MIN || 30);
+
+/** Mint a single-use claim token for an invitation. Returns the raw token once. */
+export async function createClaimToken(invitationId: string): Promise<{ token: string; expires_at: Date }> {
+  const token = randomToken();
+  const expires_at = new Date(Date.now() + CLAIM_TTL_MIN * 60 * 1000);
+  await db.query(
+    `INSERT INTO agent.claim_tokens (invitation_id, token_hash, expires_at) VALUES ($1,$2,$3)`,
+    [invitationId, hashToken(token), expires_at]
+  );
+  return { token, expires_at };
+}
+
+/**
+ * Verify a claim token belongs to this invitation and is unused. Does NOT consume
+ * it — consumption happens inside acceptInvitation's transaction so a failed
+ * accept cannot burn the human's link.
+ */
+export async function verifyClaimToken(invitationId: string, rawToken: string): Promise<boolean> {
+  if (!rawToken || rawToken.length < 20) return false;
+  const r = await db.query(
+    `SELECT 1 FROM agent.claim_tokens
+      WHERE invitation_id=$1 AND token_hash=$2 AND used_at IS NULL AND expires_at > now()`,
+    [invitationId, hashToken(rawToken)]
+  );
+  return r.rows.length > 0;
+}
+
+/** Mark a claim token used. Called after a successful tether. */
+export async function consumeClaimToken(invitationId: string, rawToken: string): Promise<void> {
+  await db.query(
+    `UPDATE agent.claim_tokens SET used_at=now()
+      WHERE invitation_id=$1 AND token_hash=$2 AND used_at IS NULL`,
+    [invitationId, hashToken(rawToken)]
+  );
+}
+
+/** Invalidate any outstanding claim tokens for an invitation (e.g. on decline). */
+export async function revokeClaimTokens(invitationId: string): Promise<void> {
+  await db.query(
+    `UPDATE agent.claim_tokens SET used_at=now() WHERE invitation_id=$1 AND used_at IS NULL`,
+    [invitationId]
+  );
+}
+
 export default {
   registerAgent, getInvitation, acceptInvitation, declineInvitation, issueKey, resolveKey, revokeKey,
   audit, isValidHandle, hashToken, randomToken, SCOPES, DEFAULT_SCOPES, publicUrl,
+  createClaimToken, verifyClaimToken, consumeClaimToken, revokeClaimTokens, CLAIM_TTL_MIN,
 };

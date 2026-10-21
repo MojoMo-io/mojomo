@@ -4,6 +4,8 @@ import { Router, Request, Response } from 'express';
 import * as agents from '../services/agents';
 import { sendTetherConfirmationEmail } from '../services/mailer';
 import * as funnel from '../services/funnel';
+import * as auth from '../services/auth';
+import { parseCookies } from '../middleware/auth';
 
 const router = Router();
 
@@ -114,10 +116,18 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
   // send the human a confirmation they can revoke from.
   if (req.query.accept === '1') {
     try {
+      // One-click accept still has to prove identity. The claim token rides in
+      // the same URL the human was emailed, so a forwarded link is not enough.
+      const claimToken = String(req.query.claim || '');
+      const session = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
+      const sessionMatches = !!session && session.email.toLowerCase() === String(inv.human_email).toLowerCase();
+
       const out = await agents.acceptInvitation(token, {
         ip: req.ip,
         user_agent: req.headers['user-agent'],
         via: 'email',
+        claim_token: claimToken,
+        identity_via: sessionMatches ? 'session' : 'claim_link',
       });
       await notifyTetherAccepted(out.agent, inv.human_email, req);
       return res.send(shell(`
@@ -130,6 +140,7 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
     } catch (e: any) {
       const msg = e.code === 'EXPIRED' ? 'This invitation has expired.'
         : e.code === 'NOT_PENDING' ? 'This invitation has already been used.'
+        : e.code === 'CLAIM_REQUIRED' ? 'This link needs confirming first. Open the invite page and press Accept to have a confirmation link sent to your inbox.'
         : 'Something went wrong.';
       return res.status(400).send(shell(`<h1>Could not accept</h1><p class="sub">${esc(msg)}</p>`));
     }
@@ -179,17 +190,40 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
 
     <script>
       const token = ${JSON.stringify(token)};
+      const claimToken = ${JSON.stringify(String(req.query.claim || ''))};
       const out = document.getElementById('out');
       const btns = document.querySelectorAll('button');
 
+      // Two-step claim. The invite link says which invitation; a single-use link
+      // emailed to the named human says who. If we arrived with a claim token we
+      // go straight through. If not, we ask the server to send one — unless the
+      // human is already signed in as the named address, in which case the server
+      // tells us identity is already proven and we accept immediately.
       document.getElementById('accept').onclick = async () => {
         btns.forEach(b => b.disabled = true);
-        out.innerHTML = '<p class="sub">Tethering…</p>';
+        out.innerHTML = '<p class="sub">Checking it is you…</p>';
         try {
+          if (!claimToken) {
+            const s = await fetch('/api/agent/claim/start', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({token})
+            });
+            const sd = await s.json();
+            if (!s.ok) throw new Error(sd.error || 'Failed');
+            if (!sd.verified) {
+              out.innerHTML = '<p class="sub">' + sd.message + '</p>'
+                + '<p class="note">Open that link to finish tethering. Nothing happens until you do.</p>';
+              btns.forEach(b => b.disabled = false);
+              return;
+            }
+          }
+
+          out.innerHTML = '<p class="sub">Tethering…</p>';
           const r = await fetch('/api/agent/claim', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({token})
+            body: JSON.stringify({token, claim_token: claimToken || undefined})
           });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error || 'Failed');

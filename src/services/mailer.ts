@@ -249,6 +249,53 @@ function tetherConfirmHtml(o: {
 }
 
 /** Confirm to the human that an agent was tethered, and how to undo it. */
+/**
+ * Claim verification link. Sent when a human opens an invite link and we cannot
+ * already prove who they are. Proves the person claiming is the person named on
+ * the invitation — the invite URL alone is not a credential.
+ */
+export async function sendClaimLinkEmail(
+  to: string,
+  opts: { agentName: string; handle: string; url: string; minutes: number }
+): Promise<MailResult> {
+  if (mailProvider() === 'console') {
+    console.log(`[mail:console] claim link for ${to} (${opts.handle}): ${opts.url}`);
+    return { provider: 'console', accepted: true };
+  }
+  const text = `${opts.agentName} (@${opts.handle}) is asking you to vouch for it on MOJOMO.\n\n`
+    + `Confirm it is you and tether it: ${opts.url}\n\n`
+    + `This link works once and expires in ${opts.minutes} minutes.\n`
+    + `If you did not ask for this, ignore it — nothing happens until you confirm.`;
+  try {
+    const info = await smtp().sendMail({
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
+      to,
+      subject: `Confirm you vouch for ${opts.agentName}`.slice(0, 180),
+      text,
+      html: claimLinkHtml(opts),
+      headers: { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
+    });
+    const accepted = (info.accepted || []).length > 0;
+    if (!accepted) console.error('SMTP did not accept recipient:', info.response);
+    return { provider: 'smtp', accepted, detail: info.response };
+  } catch (e: any) {
+    console.error('SMTP send failed:', e.message);
+    return { provider: 'smtp', accepted: false, detail: e.message };
+  }
+}
+
+function claimLinkHtml(opts: { agentName: string; handle: string; url: string; minutes: number }): string {
+  const esc = (v: string) => String(v).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+  return `<!doctype html><html><body style="margin:0;background:#0F1115;padding:32px;font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#F5F5F0">
+  <div style="max-width:520px;margin:0 auto;background:#171A20;border:1px solid #262B33;border-radius:14px;padding:32px">
+    <h1 style="font-size:20px;margin:0 0 8px">Confirm you vouch for ${esc(opts.agentName)}</h1>
+    <p style="color:#8A8F98;font-size:14px;margin:0 0 22px">@${esc(opts.handle)} named you as the human who vouches for it. Nothing happens until you confirm.</p>
+    <a href="${esc(opts.url)}" style="display:block;text-align:center;background:#E8B44A;color:#14161A;text-decoration:none;font-weight:600;padding:14px;border-radius:9px">Confirm and tether</a>
+    <p style="color:#8A8F98;font-size:13px;margin:20px 0 0">This link works once and expires in ${opts.minutes} minutes. If you did not ask for this, ignore it.</p>
+  </div></body></html>`;
+}
+
 export async function sendTetherConfirmationEmail(
   to: string,
   opts: {

@@ -64,7 +64,11 @@ describe('funnel', () => {
     const out = await agents.registerAgent({
       handle, display_name: 'Funnel Accept', human_email: `${handle}@example.com`,
     });
-    await agents.acceptInvitation(out.invite_token, { via: 'email', ip: '203.0.113.7' });
+    const invId0 = await invitationIdFor(handle);
+    const claim = await agents.createClaimToken(invId0);
+    await agents.acceptInvitation(out.invite_token, {
+      via: 'email', ip: '203.0.113.7', claim_token: claim.token,
+    });
     const invId = await invitationIdFor(handle);
     const stages = await stagesFor(invId);
     expect(stages).toEqual(['registered', 'email_sent', 'accepted']);
@@ -101,7 +105,10 @@ describe('funnel', () => {
     const invId = await invitationIdFor(handle);
     await db.query(`UPDATE agent.invitations SET expires_at = now() - interval '1 hour' WHERE id=$1`, [invId]);
 
-    await expect(agents.acceptInvitation(out.invite_token, {})).rejects.toMatchObject({ code: 'EXPIRED' });
+    const claim = await agents.createClaimToken(invId);
+    await expect(
+      agents.acceptInvitation(out.invite_token, { claim_token: claim.token })
+    ).rejects.toMatchObject({ code: 'EXPIRED' });
     const stages = await stagesFor(invId);
     expect(stages).toContain('expired');
     expect(stages).not.toContain('accepted');

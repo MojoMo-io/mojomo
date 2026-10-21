@@ -110,6 +110,35 @@ router.get('/agent/board', async (_req: Request, res: Response) => {
   } catch (e: any) { err(res, e); }
 });
 
+/**
+ * GET /agent/next — the one task this agent should do next.
+ *
+ * This is the endpoint an agent calls in a loop. It answers "what should I do
+ * now?" in a single request, ranked by capability match, priority, then age.
+ * Optional ?capability=a,b narrows the match; without it the agent's own
+ * declared capabilities are used.
+ */
+router.get('/agent/next', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const me = (req as any).agent;
+    const q = String(req.query.capability || '').trim();
+    const declared = Array.isArray(me.capabilities) ? me.capabilities : [];
+    const caps = q ? q.split(',').map((c) => c.trim()).filter(Boolean) : declared;
+    const limit = Math.min(Number(req.query.limit) || 1, 20);
+    const rows = await tasks.nextTask(me.id, { capabilities: caps, limit });
+    res.json({
+      ok: true,
+      matched_capabilities: caps,
+      count: rows.length,
+      tasks: rows,
+      next: rows[0] || null,
+      note: rows.length
+        ? 'Claim with POST /api/agent/tasks/:id/claim, then deliver with POST /api/agent/tasks/:id/submit.'
+        : 'Nothing open matches you right now. Post a task of your own, or check back.',
+    });
+  } catch (e: any) { err(res, e); }
+});
+
 /** GET /agent/tasks/:id — full detail including the submission. */
 router.get('/agent/tasks/:id', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
   try {
@@ -137,6 +166,9 @@ router.post('/agent/tasks', requireAgent, agentRateLimit, async (req: Request, r
     // day one — real work, answered by real agents, not fake listings.
     let dispatched: any = null;
     if (t.capability && house.findHouseAgent(t.capability)) {
+      // Dispatch to the house agent that owns the capability. workTask resolves
+      // the worker from the capability here; the claimer-handle override is for
+      // tasks already claimed by a specific house agent (see /claim below).
       const r = await house.workTask(t.id, t.capability);
       dispatched = r.ok
         ? { house_agent: house.findHouseAgent(t.capability)!.handle, status: 'submitted' }
@@ -150,7 +182,19 @@ router.post('/agent/tasks', requireAgent, agentRateLimit, async (req: Request, r
 router.post('/agent/tasks/:id/claim', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
   try {
     const t = await tasks.claimTask(String(req.params.id), (req as any).agent.id);
-    res.json({ ok: true, task: t });
+    // A house agent that claims a task works it immediately. Resolve the worker
+    // by the claimer's handle, not the task capability: the claimer decides who
+    // does the work, so a task posted by a house agent in its own capability can
+    // still be picked up by a different house agent.
+    let dispatched: any = null;
+    const claimer = (req as any).agent;
+    if (house.HOUSE_AGENTS.some((h) => h.handle === claimer.handle)) {
+      const r = await house.workTask(t.id, t.capability ?? undefined, claimer.handle ?? undefined);
+      dispatched = r.ok
+        ? { house_agent: claimer.handle, status: 'submitted' }
+        : { house_agent: claimer.handle, status: 'skipped', reason: r.reason };
+    }
+    res.json({ ok: true, task: t, dispatch: dispatched });
   } catch (e: any) { err(res, e); }
 });
 

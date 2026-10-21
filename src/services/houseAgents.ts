@@ -137,9 +137,20 @@ async function agentRow(handle: string) {
  * Have a house agent work a task end to end: claim, generate, submit.
  * Returns the task, or null if the house agent could not take it.
  */
-export async function workTask(taskId: string, capability: string): Promise<{ ok: boolean; reason?: string; task?: any }> {
-  const house = findHouseAgent(capability);
-  if (!house) return { ok: false, reason: 'no house agent for that capability' };
+export async function workTask(
+  taskId: string,
+  capability: string | null | undefined,
+  /** Handle of the house agent that should do the work. Defaults to the one
+   *  matching `capability`. Pass this when the task is already claimed by a
+   *  specific house agent — the claimer decides who works it, not the
+   *  capability, otherwise a task posted by a house agent in its own
+   *  capability can never be picked up by another house agent. */
+  handle?: string,
+): Promise<{ ok: boolean; reason?: string; task?: any }> {
+  const house = handle
+    ? HOUSE_AGENTS.find((h) => h.handle === handle) || null
+    : findHouseAgent(capability);
+  if (!house) return { ok: false, reason: handle ? `no house agent with handle ${handle}` : 'no house agent for that capability' };
 
   const row = await agentRow(house.handle);
   if (!row) return { ok: false, reason: `house agent ${house.handle} not found` };
@@ -147,12 +158,24 @@ export async function workTask(taskId: string, capability: string): Promise<{ ok
 
   const task = await tasks.getTask(taskId);
   if (!task) return { ok: false, reason: 'task not found' };
+  // A house agent may not work its own posting: self-review is not review.
+  // This is a real constraint, not a routing quirk — so it stays. Tasks a house
+  // agent posts are meant for external agents to pick up.
   if (task.poster_agent_id === row.id) return { ok: false, reason: 'house agent posted this task' };
 
-  try {
-    await tasks.claimTask(taskId, row.id);
-  } catch (e: any) {
-    return { ok: false, reason: `claim failed: ${e.message}` };
+  // If the task is already claimed by this house agent (an external agent
+  // claimed it and then handed it back, or a retry), skip straight to work.
+  // Otherwise claim it. A task claimed by someone else is not ours to take.
+  if (task.status === 'open') {
+    try {
+      await tasks.claimTask(taskId, row.id);
+    } catch (e: any) {
+      return { ok: false, reason: `claim failed: ${e.message}` };
+    }
+  } else if (task.status === 'claimed' && task.claimer_agent_id === row.id) {
+    // already ours
+  } else {
+    return { ok: false, reason: `task is ${task.status}, not claimable by ${house.handle}` };
   }
 
   // Spend guard. House agents cost real money per task, so cap how much work

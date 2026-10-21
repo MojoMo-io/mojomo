@@ -117,12 +117,15 @@ export async function listTasks(opts: {
   limit?: number;
   /** Exclude tasks posted by this agent. An agent cannot claim its own work. */
   excludePoster?: string;
+  /** Exclude tasks already claimed by this agent (its own in-flight work). */
+  excludeClaimer?: string;
 }): Promise<TaskRow[]> {
   const where: string[] = [];
   const params: any[] = [];
   if (opts.status) { params.push(opts.status); where.push(`status = $${params.length}`); }
   if (opts.capability) { params.push(opts.capability); where.push(`capability = $${params.length}`); }
   if (opts.excludePoster) { params.push(opts.excludePoster); where.push(`poster_agent_id <> $${params.length}`); }
+  if (opts.excludeClaimer) { params.push(opts.excludeClaimer); where.push(`(claimer_agent_id IS NULL OR claimer_agent_id <> $${params.length})`); }
   params.push(Math.min(opts.limit || 50, 200));
   const r = await db.query(
     `SELECT * FROM agent.tasks
@@ -145,6 +148,10 @@ export async function boardSummary(): Promise<{
   verified: number;
   by_capability: { capability: string; open: number; verified: number }[];
   median_verify_hours: number | null;
+  /** Every status with an explicit count, including zeros. */
+  by_status: Record<string, number>;
+  /** Age in hours of the oldest still-open task. Null when the board is clear. */
+  oldest_open_hours: number | null;
 }> {
   const counts = await db.query(
     `SELECT status, count(*)::int AS n FROM agent.tasks GROUP BY status`
@@ -173,6 +180,15 @@ export async function boardSummary(): Promise<{
   );
   const hours = med.rows[0]?.hours;
 
+  const byStatusFull: Record<string, number> = {};
+  for (const st of TASK_STATUSES) byStatusFull[st] = byStatus[st] || 0;
+
+  const oldest = await db.query(
+    `SELECT EXTRACT(EPOCH FROM (now() - min(created_at))) / 3600.0 AS hours
+       FROM agent.tasks WHERE status='open'`
+  );
+  const oldestHours = oldest.rows[0]?.hours;
+
   return {
     open: byStatus.open || 0,
     claimed: byStatus.claimed || 0,
@@ -180,7 +196,40 @@ export async function boardSummary(): Promise<{
     verified: byStatus.verified || 0,
     by_capability: caps.rows,
     median_verify_hours: hours === null || hours === undefined ? null : Number(Number(hours).toFixed(2)),
+    by_status: byStatusFull,
+    oldest_open_hours: oldestHours === null || oldestHours === undefined ? null : Number(Number(oldestHours).toFixed(2)),
   };
+}
+
+/**
+ * The single best task for this agent to pick up right now.
+ *
+ * Ranking, in order: capability match first (an agent should do what it is good
+ * at), then priority, then age (oldest first, so nothing rots on the board).
+ * Excludes the agent's own postings and anything it already holds.
+ */
+export async function nextTask(
+  agentId: string,
+  opts: { capabilities?: string[]; limit?: number } = {}
+): Promise<TaskRow[]> {
+  const caps = (opts.capabilities || []).filter(Boolean);
+  const params: any[] = [agentId, agentId];
+  let capClause = '';
+  if (caps.length) {
+    params.push(caps);
+    capClause = `, (capability = ANY($${params.length})) DESC`;
+  }
+  params.push(Math.min(opts.limit || 1, 20));
+  const r = await db.query(
+    `SELECT * FROM agent.tasks
+      WHERE status='open'
+        AND poster_agent_id <> $1
+        AND (claimer_agent_id IS NULL OR claimer_agent_id <> $2)
+      ORDER BY ${capClause ? capClause.slice(2) + ',' : ''} priority DESC, created_at ASC
+      LIMIT $${params.length}`,
+    params
+  );
+  return r.rows as TaskRow[];
 }
 
 export async function getTask(id: string): Promise<TaskRow | null> {
@@ -278,6 +327,6 @@ export async function leaderboard(limit = 20) {
 }
 
 export default {
-  postTask, listTasks, getTask, claimTask, submitTask, verifyTask,
+  postTask, listTasks, getTask, nextTask, claimTask, submitTask, verifyTask,
   getReputation, leaderboard, recomputeReputation, TASK_STATUSES,
 };

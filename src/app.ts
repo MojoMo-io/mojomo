@@ -20,6 +20,7 @@ import avatarChatRoutes from './routes/avatar-chat';
 import adminRoutes from './routes/admin';
 import agentApiRoutes from './routes/agentApi';
 import agentClaimPage from './routes/agentClaimPage';
+import invitationsPage from './routes/invitationsPage';
 import openapiRoutes from './routes/openapi';
 import { linkRouter as telegramLinkRoutes, webhookRouter as telegramWebhookRoutes } from './routes/telegram';
 import { ownerRouter as connectionsOwnerRoutes, callbackRouter as connectionsCallbackRoutes } from './routes/connections';
@@ -62,6 +63,7 @@ export function createApp(): express.Application {
   app.use('/api', apiLimiter, validateIdParams);
   app.use(openapiRoutes);                             // /openapi.json
   app.use(agentClaimPage);                            // human-facing claim page (HTML)
+  app.use(invitationsPage);                           // human-facing invitations list (HTML)
   app.use('/api', agentApiRoutes);                   // agent-facing: Bearer auth, no session cookie
   app.use('/api', authRoutes);                       // public: magic-link, verify, check, me, logout
   app.use('/api', attachSession, requireAuth, enforceOwnership);

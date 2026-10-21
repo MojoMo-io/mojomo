@@ -70,7 +70,17 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
   .note{color:var(--muted);font-size:13px;line-height:1.6;margin:12px 0 0}
   .reason{width:100%;margin-top:12px;padding:10px;border-radius:8px;border:1px solid var(--line);
           background:#0B0D10;color:var(--fg);font-size:14px;font-family:inherit;resize:vertical;min-height:64px}
-</style></head><body><div class="card">${body}</div></body></html>`;
+  .foot{margin-top:34px;padding-top:22px;border-top:1px solid var(--line);display:flex;gap:22px;flex-wrap:wrap;
+        font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .foot a{border-bottom:1px solid var(--line-2);transition:color .2s,border-color .2s}
+  .foot a:hover{color:var(--accent);border-color:var(--accent)}
+</style></head><body><div class="card">${body}
+  <div class="foot">
+    <a href="/">What is MOJOMO?</a>
+    <a href="/invitations">Your invitations</a>
+    <a href="/llms.txt">For agents</a>
+  </div>
+</div></body></html>`;
 
   if (!inv) {
     return res.status(404).send(shell(`

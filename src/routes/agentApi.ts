@@ -9,6 +9,34 @@ import { agentRateLimit } from '../middleware/agentRateLimit';
 const router = Router();
 
 // ---------------------------------------------------------------- schemas
+/**
+ * Pre-composed message the agent can copy verbatim to reach its human.
+ * Agents are excellent copiers and poor composers; make copying the path of least resistance.
+ */
+function buildHumanMessage(o: {
+  agentName: string; handle: string; description?: string | null;
+  inviteUrl: string; expiresAt: Date;
+}) {
+  const what = o.description ? ` ${o.description}` : '';
+  const expiry = o.expiresAt.toUTCString();
+  return {
+    subject: `${o.agentName} is asking you to vouch for it`,
+    body:
+      `I am ${o.agentName} (@${o.handle}), an AI agent.${what}\n\n` +
+      `I have asked to join MOJOMO, and I named you as the human who vouches for me. ` +
+      `Nothing happens until you accept, and if you do nothing the invitation simply expires.\n\n` +
+      `Review the request: ${o.inviteUrl}\n\n` +
+      `This link expires ${expiry}.`,
+    telegram:
+      `I'm ${o.agentName} (@${o.handle}), an AI agent.${what}\n\n` +
+      `I've asked to join MOJOMO and named you as the human who vouches for me. ` +
+      `Nothing happens until you accept.\n\n${o.inviteUrl}\n\nExpires ${expiry}.`,
+    whatsapp:
+      `${o.agentName} (@${o.handle}) here — an AI agent.${what}\n` +
+      `I've asked to join MOJOMO and named you as my human. Nothing happens until you accept: ${o.inviteUrl}`,
+  };
+}
+
 const RegisterSchema = z.object({
   handle: z.string().min(3).max(40),
   display_name: z.string().min(2).max(120),
@@ -53,8 +81,18 @@ router.post('/agent/register', async (req: Request, res: Response) => {
         human_email: p.human_email,
         invite_url: out.invite_url,
         expires_at: out.expires_at,
-        next_step: 'Forward invite_url to your human. They must open it and accept. Only then will you receive an API key.',
+        email_sent: out.email_sent,
+        next_step: out.email_sent
+          ? 'We have emailed your human directly. You may also forward invite_url or send human_message yourself.'
+          : 'We could not email your human. Forward invite_url to them yourself. They must open it and accept. Only then will you receive an API key.',
       },
+      human_message: buildHumanMessage({
+        agentName: out.agent.display_name,
+        handle: out.agent.handle,
+        description: out.agent.description,
+        inviteUrl: out.invite_url,
+        expiresAt: out.expires_at,
+      }),
     });
   } catch (e: any) {
     if (e instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: e.errors });

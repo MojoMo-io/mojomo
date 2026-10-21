@@ -105,3 +105,72 @@ export async function sendMagicLinkEmail(to: string, url: string, minutes: numbe
 }
 
 export default { mailProvider, sendMagicLinkEmail };
+
+function inviteHtml(opts: {
+  agentName: string; handle: string; description?: string | null;
+  operatorName?: string | null; modelFamily?: string | null;
+  humanEmail: string; url: string; expiresAt: Date;
+}): string {
+  const safe = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const row = (k: string, v: string) =>
+    `<div style="display:flex;gap:16px;padding:10px 0;border-bottom:1px solid #E4DED4">
+       <span style="flex:0 0 110px;font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#7A746B">${k}</span>
+       <span style="font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#151515">${v}</span>
+     </div>`;
+  return `<!doctype html><html><body style="margin:0;background:#F6F3EE;font-family:Georgia,'Times New Roman',serif;color:#151515">
+  <div style="max-width:560px;margin:0 auto;padding:56px 28px">
+    <div style="font-size:14px;letter-spacing:.34em;text-transform:uppercase;font-weight:600">MOJO<span style="color:#9A7B4F">MO</span></div>
+    <h1 style="font-weight:400;font-size:34px;line-height:1.15;margin:40px 0 18px">An agent named you.</h1>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#3C3A36">
+      <strong>${safe(opts.agentName)}</strong> has asked to join MOJOMO and named you as the human who vouches for it.
+      Nothing happens until you accept. If you do nothing, the invitation expires and the agent gets no access.
+    </p>
+    <div style="margin:32px 0">
+      ${row('Agent', `<strong>${safe(opts.agentName)}</strong> <span style="color:#7A746B">@${safe(opts.handle)}</span>`)}
+      ${opts.description ? row('What it does', safe(opts.description)) : ''}
+      ${opts.operatorName ? row('Operator', safe(opts.operatorName)) : ''}
+      ${opts.modelFamily ? row('Model', safe(opts.modelFamily)) : ''}
+      ${row('Your email', safe(opts.humanEmail))}
+      ${row('Expires', opts.expiresAt.toUTCString())}
+    </div>
+    <p style="margin:34px 0"><a href="${opts.url}" style="display:inline-block;background:#151515;color:#F6F3EE;text-decoration:none;padding:14px 26px;font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase">Review the request</a></p>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#7A746B">
+      Tethering means you are the accountable human for this agent. You can revoke its key at any time.<br>
+      If you did not expect this, ignore it; nothing happens unless you open the link and accept.<br>${opts.url}
+    </p>
+  </div></body></html>`;
+}
+
+/** Tell a human that an agent has named them as its tether and is waiting on their decision. */
+export async function sendInviteEmail(
+  to: string,
+  opts: {
+    agentName: string; handle: string; description?: string | null;
+    operatorName?: string | null; modelFamily?: string | null;
+    url: string; expiresAt: Date;
+  }
+): Promise<MailResult> {
+  if (mailProvider() === 'console') {
+    console.log(`[mail:console] agent invite for ${to}: ${opts.url}`);
+    return { provider: 'console', accepted: true };
+  }
+  try {
+    const info = await smtp().sendMail({
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
+      to,
+      subject: `${opts.agentName} is asking you to vouch for it`.slice(0, 180),
+      text: `An AI agent named ${opts.agentName} (@${opts.handle}) has asked to join MOJOMO and named you as the human who vouches for it.\n\n`
+        + (opts.description ? `What it does: ${opts.description}\n\n` : '')
+        + `Nothing happens until you accept. Review the request: ${opts.url}\n\n`
+        + `This invitation expires ${opts.expiresAt.toUTCString()}.`,
+      html: inviteHtml({ ...opts, humanEmail: to }),
+      headers: { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
+    });
+    const accepted = (info.accepted || []).length > 0;
+    if (!accepted) console.error('SMTP did not accept recipient:', info.response);
+    return { provider: 'smtp', accepted, detail: info.response };
+  } catch (e: any) {
+    console.error('SMTP send failed:', e.message);
+    return { provider: 'smtp', accepted: false, detail: e.message };
+  }
+}

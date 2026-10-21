@@ -3,6 +3,7 @@
 // human who explicitly accepted an invitation. Untethered agents cannot obtain a key.
 import { createHash, randomBytes } from 'crypto';
 import * as db from './db';
+import { sendInviteEmail } from './mailer';
 
 export const INVITE_TTL_HOURS = Number(process.env.AGENT_INVITE_TTL_HOURS || 72);
 
@@ -60,7 +61,7 @@ export async function registerAgent(input: {
   capabilities?: string[];
   endpoint_url?: string;
   human_email: string;
-}): Promise<{ agent: AgentRow; invite_token: string; invite_url: string; expires_at: Date }> {
+}): Promise<{ agent: AgentRow; invite_token: string; invite_url: string; expires_at: Date; email_sent: boolean }> {
   const existing = await db.query('SELECT id FROM agent.agents WHERE handle = $1', [input.handle]);
   if (existing.rows.length > 0) {
     throw Object.assign(new Error('Handle already taken'), { code: 'HANDLE_TAKEN' });
@@ -94,12 +95,28 @@ export async function registerAgent(input: {
     [agent.id, hashToken(token), input.human_email.toLowerCase(), expires_at]
   );
 
-  return {
-    agent,
-    invite_token: token,
-    invite_url: `${publicUrl()}/agent/claim?token=${token}`,
-    expires_at,
-  };
+  const invite_url = `${publicUrl()}/agent/claim?token=${token}`;
+
+  // Deliver the request to the human ourselves. The agent is a trigger, not a courier:
+  // relying on an LLM to compose and send this message is the weakest link in the funnel.
+  // A mail failure must never fail the registration — the invite_url is still returned.
+  let email_sent = false;
+  try {
+    const mail = await sendInviteEmail(input.human_email.toLowerCase(), {
+      agentName: agent.display_name,
+      handle: agent.handle,
+      description: agent.description,
+      operatorName: agent.operator_name,
+      modelFamily: agent.model_family,
+      url: invite_url,
+      expiresAt: expires_at,
+    });
+    email_sent = mail.accepted;
+  } catch (e: any) {
+    console.error('invite email failed:', e.message);
+  }
+
+  return { agent, invite_token: token, invite_url, expires_at, email_sent };
 }
 
 /** Look up a pending invitation by raw token. */

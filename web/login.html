@@ -45,7 +45,7 @@ hr{border:0;border-top:1px solid var(--line);margin:34px 0 22px}
     <div class="wordmark">MOJO<span>MO</span></div>
     <div>
       <h1>Two minds.<br>One idea, <em>refined.</em></h1>
-      <p>A private atelier for a creator and a co-creator. Entry is by invitation: the access password opens the door, and a link sent to your inbox is your key.</p>
+      <p>A private atelier for a creator and a co-creator. Enter your email, and a link sent to your inbox is your key.</p>
     </div>
     <div class="foot">MOJOMO · mojomo.io</div>
   </aside>
@@ -57,8 +57,6 @@ hr{border:0;border-top:1px solid var(--line);margin:34px 0 22px}
         <p class="lede">We’ll send a single-use link to your email. It expires in twenty minutes.</p>
         <label class="eyebrow" for="email">Email</label>
         <input id="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
-        <label class="eyebrow" for="pw">Access password</label>
-        <input id="pw" type="password" autocomplete="current-password" placeholder="Given to you personally" required>
         <button class="btn" id="go" type="submit">Send me the link</button>
         <div class="msg" id="msg" aria-live="polite"></div>
         <p class="note">Your address is used only to send this link and to identify you in the room.</p>
@@ -82,23 +80,21 @@ hr{border:0;border-top:1px solid var(--line);margin:34px 0 22px}
   fetch('/api/auth/me', { credentials: 'same-origin' }).then(r => { if (r.ok) location.replace('/'); }).catch(() => {});
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = $('email').value.trim(), pw = $('pw').value;
+    const email = $('email').value.trim();
     const msg = $('msg'); msg.className = 'msg'; msg.textContent = '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.className = 'msg err'; msg.textContent = 'Enter a valid email address.'; return; }
-    if (!pw) { msg.className = 'msg err'; msg.textContent = 'The access password is required.'; return; }
     $('go').disabled = true; msg.textContent = 'Sending…';
     try {
-      const r = await fetch('/api/auth/magic-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, access_password: pw }), credentials: 'same-origin' });
+      const r = await fetch('/api/auth/magic-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }), credentials: 'same-origin' });
       const d = await r.json().catch(() => ({}));
-      if (r.status === 401) { msg.className = 'msg err'; msg.textContent = 'That access password is not right.'; }
-      else if (r.status === 429) { msg.className = 'msg err'; msg.textContent = 'Too many requests. Please wait a few minutes.'; }
+      if (r.status === 429) { msg.className = 'msg err'; msg.textContent = 'Too many requests. Please wait a few minutes.'; }
       else if (r.status === 503) { msg.className = 'msg err'; msg.textContent = d.error || 'Email is temporarily unavailable. Try again shortly.'; }
       else if (!r.ok) { msg.className = 'msg err'; msg.textContent = d.error || 'Something went wrong. Try again.'; }
       else { $('form').style.display = 'none'; $('sent').style.display = 'block'; $('sentTo').textContent = d.message && d.message.includes('not configured') ? d.message : `A link is on its way to ${email}.`; if (d.debug_link) { $('sentTo').innerHTML += ` <a href="${d.debug_link}">Open link (dev)</a>`; } }
     } catch { msg.className = 'msg err'; msg.textContent = 'Network error. Try again.'; }
     $('go').disabled = false;
   });
-  $('again').onclick = () => { $('sent').style.display = 'none'; $('form').style.display = 'block'; $('pw').value = ''; };
+  $('again').onclick = () => { $('sent').style.display = 'none'; $('form').style.display = 'block'; };
 })();
 </script>
 </body>

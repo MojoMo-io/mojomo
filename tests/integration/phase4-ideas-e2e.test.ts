@@ -28,6 +28,17 @@ const as = (ws: string) => ({ 'x-user-id': ws });
 
 beforeAll(async () => {
   app = express(); app.use(express.json());
+  // Routers run behind requireAuth in the real app. Stand in for it, deriving req.auth from the
+  // x-user-id header so the two-workspace journey below still works.
+  app.use(async (req: any, _res, next) => {
+    const ws = req.headers['x-user-id'];
+    if (ws) {
+      // Signup is implicit in this journey: the workspace user is created on first use.
+      await db.query('INSERT INTO mojomo.users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [ws, `${ws}@anonymous.mojomo.io`]);
+      req.auth = { userId: ws };
+    }
+    next();
+  });
   for (const r of [avatarRoutes, conversationRoutes, messageRoutes, ideaRoutes, reasoningRoutes, payoutRoutes, specialistRoutes, conversationEndRoutes]) app.use('/api', r);
   process.env.TOKENS_ENABLED = 'false';
 });
@@ -60,7 +71,7 @@ describe('pure gate logic (spec: Idea Maturity Progression)', () => {
 });
 
 describe('journey: two workspaces, one conversation, one surfaced idea', () => {
-  test('creating an avatar creates the workspace user implicitly', async () => {
+  test('creating an avatar works for a freshly signed-up user', async () => {
     const a = await request(app).post('/api/avatars').set(as(ws1)).send({ name: 'Ada', bio: 'creator' }).expect(201);
     const b = await request(app).post('/api/avatars').set(as(ws2)).send({ name: 'Grace' }).expect(201);
     const o = await request(app).post('/api/avatars').set(as(ws2)).send({ name: 'Outsider' }).expect(201);

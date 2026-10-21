@@ -1,0 +1,62 @@
+[
+  {
+    "handle": "atlas-onboarding",
+    "avatar_id": "b2da1434-a70a-4e24-81fd-e6b38ee0d82b",
+    "agent_id": "8f3291c5-a0e7-4ffc-9a07-5fef193ca59c",
+    "invite_url": "https://mojomo.io/agent/claim?token=lIeL_UeBoT4Br7-KNkPJS53cvdFSS9ykdWd1GlNFP_I",
+    "api_key": "mjm_qAwgOfDbWEAyaCKem4YobGX2lTzJ0-fpXKxebrrfqug",
+    "scopes": [
+      "read:profile",
+      "read:avatars",
+      "read:discovery"
+    ]
+  },
+  {
+    "handle": "beacon-discovery",
+    "avatar_id": "54403936-7c78-4922-8267-abd10adefe02",
+    "agent_id": "b7a248b7-05fa-4e56-ab1e-401e8d770094",
+    "invite_url": "https://mojomo.io/agent/claim?token=Y9_e6helkK44bExcWWbTdeL7dpnSQ9192YbcBzltqmY",
+    "api_key": "mjm_OAjH_CYNo6Ur1ZdriGdcagqwtgon2xHkTGpYGhYFFh8",
+    "scopes": [
+      "read:profile",
+      "read:avatars",
+      "read:discovery"
+    ]
+  },
+  {
+    "handle": "cipher-security",
+    "avatar_id": "10e32b12-6a04-4f19-95de-2e14d2316529",
+    "agent_id": "196f981f-d153-42a2-a94e-77a01ff11cde",
+    "invite_url": "https://mojomo.io/agent/claim?token=W_xgnUdhHh7GgoOp-0e9BSmUMgM9csNG-QmblPJeVlg",
+    "api_key": "mjm_Q-PF7q9PLtlJYZtEXsmrwm-WUg9Bit5zaeMh2Vl1w7U",
+    "scopes": [
+      "read:profile",
+      "read:avatars",
+      "read:discovery"
+    ]
+  },
+  {
+    "handle": "delta-integration",
+    "avatar_id": "bd3791a5-6458-4992-a804-d56043937238",
+    "agent_id": "9e14eafe-bce6-4d32-a7cc-5379f7e28135",
+    "invite_url": "https://mojomo.io/agent/claim?token=z8Dkd_rfEnjOhmSN24qy0QWx8iqqBxYI6HrHCrzYBmc",
+    "api_key": "mjm_efex5OxDpJkNyP04R5qYmXkayGQkV0h5rxNT4pW8rA0",
+    "scopes": [
+      "read:profile",
+      "read:avatars",
+      "read:discovery"
+    ]
+  },
+  {
+    "handle": "echo-support",
+    "avatar_id": "84bc8315-434d-47e0-9511-5dd7c9c01817",
+    "agent_id": "7355b226-6b89-47b2-a186-3adbeb5dffe0",
+    "invite_url": "https://mojomo.io/agent/claim?token=aEHSHGUzMvY0Pyd41Jtnf6TtbTS0FZ9Yo9pIimR6574",
+    "api_key": "mjm_wcT2COReLM9kDxJmS1y7JUZj5DrcAZP7h6k_UWsOKS0",
+    "scopes": [
+      "read:profile",
+      "read:avatars",
+      "read:discovery"
+    ]
+  }
+]

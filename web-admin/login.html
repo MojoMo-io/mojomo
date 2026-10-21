@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOJOMO Support — Sign in</title>
+<meta name="robots" content="noindex">
+<style>
+:root{--paper:#F6F3EE;--ink:#151515;--ink-2:#3C3A36;--muted:#7A746B;--line:rgba(21,21,21,.14);--line-2:rgba(21,21,21,.28);--accent:#9A7B4F;--danger:#7A2E2E;--sans:"Inter",system-ui,sans-serif}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6}
+.wrap{max-width:420px;margin:80px auto;padding:0 24px}
+h1{font-size:22px;letter-spacing:.05em}
+label{display:block;margin:18px 0 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+input{width:100%;background:transparent;border:0;border-bottom:1px solid var(--line-2);padding:10px 0;font:inherit;font-size:15px;outline:none}
+.btn{margin-top:26px;width:100%;background:var(--ink);color:var(--paper);border:0;padding:12px;font:inherit;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
+.msg{margin-top:16px;font-size:13px;color:var(--ink-2)}.msg.err{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MOJOMO Support</h1>
+  <p style="color:var(--muted)">Admin-only. Same magic-link sign-in as the main site.</p>
+  <form id="form">
+    <label for="email">Email</label>
+    <input id="email" type="email" required>
+    <button class="btn" id="go" type="submit">Send me the link</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</div>
+<script>
+(() => {
+  const $ = (i) => document.getElementById(i);
+  fetch('/api/auth/check-admin', { credentials: 'same-origin' }).then(r => { if (r.ok) location.replace('/'); }).catch(() => {});
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('email').value.trim();
+    const msg = $('msg'); msg.className = 'msg'; msg.textContent = 'Sending...';
+    $('go').disabled = true;
+    try {
+      const r = await fetch('/api/auth/magic-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }), credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { msg.className = 'msg err'; msg.textContent = d.error || 'Something went wrong.'; }
+      else { msg.textContent = d.message || `A link is on its way to ${email}.`; if (d.debug_link) msg.innerHTML += ` <a href="${d.debug_link}">Open (dev)</a>`; }
+    } catch { msg.className = 'msg err'; msg.textContent = 'Network error.'; }
+    $('go').disabled = false;
+  });
+})();
+</script>
+</body>
+</html>

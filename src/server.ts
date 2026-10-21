@@ -5,6 +5,8 @@ import * as db from './services/db';
 import { createApp } from './app';
 import { startJobQueue, stopJobQueue } from './services/job-queue';
 import { startDormantScheduler, stopDormantScheduler } from './services/forfeiture';
+import { startProactiveMatchScheduler, stopProactiveMatchScheduler } from './services/matchmaking';
+import { startConnectionSyncScheduler, stopConnectionSyncScheduler } from './services/connections';
 import { purgeExpiredAuth } from './services/auth';
 import { mailProvider } from './services/mailer';
 
@@ -19,6 +21,8 @@ async function gracefulShutdown() {
   console.log('\nShutting down gracefully...');
   await stopJobQueue();
   stopDormantScheduler();
+  stopProactiveMatchScheduler();
+  stopConnectionSyncScheduler();
   if (authPurge) clearInterval(authPurge);
   server.close(async () => { await db.closePool(); console.log('Server shut down'); process.exit(0); });
   setTimeout(() => { console.error('Forced shutdown after timeout'); process.exit(1); }, 10000);
@@ -30,10 +34,12 @@ const server = app.listen(PORT, async () => {
   console.log(`MOJOMO API server listening on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
-  console.log(`Auth: site password ${process.env.SITE_ACCESS_PASSWORD ? 'set' : 'NOT SET (site locked to everyone)'}; mail provider ${mailProvider()} (${process.env.SMTP_URL || 'smtp://127.0.0.1:25'})`);
+  console.log(`Auth: open signup by email magic link; mail provider ${mailProvider()} (${process.env.SMTP_URL || 'smtp://127.0.0.1:25'})`);
   console.log(`Flags: TOKENS_ENABLED=${process.env.TOKENS_ENABLED === 'true'} SPECIALISTS_ENABLED=${process.env.SPECIALISTS_ENABLED === 'true'}`);
   await startJobQueue(5000, 5).catch((err) => console.error('Failed to start job queue:', err));
   startDormantScheduler();
+  startProactiveMatchScheduler();
+  startConnectionSyncScheduler();
   authPurge = setInterval(() => purgeExpiredAuth().catch((e) => console.error('Auth purge failed:', e)), 60 * 60 * 1000);
 });
 

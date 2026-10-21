@@ -17,16 +17,12 @@ const magicLinkLimiter = rateLimit({
   message: { error: 'Too many sign-in requests. Try again in a few minutes.' },
 });
 
-const MagicLinkSchema = z.object({ email: z.string().min(3).max(320), access_password: z.string().min(1).max(200) });
+const MagicLinkSchema = z.object({ email: z.string().min(3).max(320) });
 
-/** POST /auth/magic-link — gated by the site password; always a neutral 200 afterwards (no address enumeration). */
+/** POST /auth/magic-link — open signup by email; always a neutral 200 afterwards (no address enumeration). */
 router.post('/auth/magic-link', magicLinkLimiter, async (req: Request, res: Response) => {
   try {
     const payload = MagicLinkSchema.parse(req.body);
-    if (!auth.verifyAccessPassword(payload.access_password)) {
-      metrics.loginAttempts.inc({ result: 'bad_password' });
-      return res.status(401).json({ error: 'Invalid access password' });
-    }
     if (!auth.isValidEmail(auth.normalizeEmail(payload.email))) {
       return res.status(400).json({ error: 'Enter a valid email address' });
     }
@@ -70,6 +66,14 @@ router.get('/auth/verify', async (req: Request, res: Response) => {
 router.get('/auth/check', async (req: Request, res: Response) => {
   const s = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
   res.status(s ? 200 : 401).end();
+});
+
+/** GET /auth/check-admin — for nginx auth_request on support.mojomo.io: 200 only for an admin session. */
+router.get('/auth/check-admin', async (req: Request, res: Response) => {
+  const s = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
+  if (!s) return res.status(401).end();
+  const admin = await auth.isAdmin(s.userId).catch(() => false);
+  res.status(admin ? 200 : 403).end();
 });
 
 /** GET /auth/me */

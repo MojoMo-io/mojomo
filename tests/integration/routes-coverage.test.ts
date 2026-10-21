@@ -24,36 +24,40 @@ const Z = '00000000-0000-0000-0000-000000000000';
 const TG = () => String(Date.now() % 1000000000 + Math.floor(Math.random() * 1000));
 const TG557 = TG();
 let app: express.Application;
-const userId = uuidv4(); const a1 = uuidv4(); const a2 = uuidv4(); const a3 = uuidv4(); const outsider = uuidv4();
+const userId = uuidv4(); const otherUserId = uuidv4(); const a1 = uuidv4(); const a2 = uuidv4(); const a3 = uuidv4(); const outsider = uuidv4();
 let convId: string;
 
 beforeAll(async () => {
   app = express(); app.use(express.json());
+  // These routers run behind requireAuth in the real app; stand in for it so req.auth is set.
+  app.use((req: any, _res, next) => { req.auth = { userId }; next(); });
   for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, conversationEndRoutes]) app.use('/api', r);
   await db.query('INSERT INTO mojomo.users (id, email) VALUES ($1, $2)', [userId, `rc-${Date.now()}@test.com`]);
+  // `outsider` belongs to a *different* user, so the ownership/leak assertions are meaningful.
+  await db.query('INSERT INTO mojomo.users (id, email) VALUES ($1, $2)', [otherUserId, `rc-other-${Date.now()}@test.com`]);
   await db.query(
-    'INSERT INTO mojomo.avatars (id, user_id, name, avatar_type) VALUES ($1,$5,$6,$9), ($2,$5,$7,$9), ($3,$5,$8,$10), ($4,$5,$11,$9)',
-    [a1, a2, a3, outsider, userId, 'RC A', 'RC B', 'RC Specialist', 'individual', 'specialist', 'RC Outsider']);
+    'INSERT INTO mojomo.avatars (id, user_id, name, avatar_type) VALUES ($1,$5,$6,$9), ($2,$5,$7,$9), ($3,$5,$8,$10), ($4,$12,$11,$9)',
+    [a1, a2, a3, outsider, userId, 'RC A', 'RC B', 'RC Specialist', 'individual', 'specialist', 'RC Outsider', otherUserId]);
   const res = await request(app).post('/api/conversations')
     .send({ initiator_avatar_id: a1, target_avatar_id: a2, title: 'RC conv', total_tokens: 1000 }).expect(201);
   convId = res.body.id || res.body.conversation?.id;
 });
-afterAll(async () => { await db.query('DELETE FROM mojomo.users WHERE id = $1', [userId]); });
+afterAll(async () => { await db.query('DELETE FROM mojomo.users WHERE id = ANY($1)', [[userId, otherUserId]]); });
 beforeEach(() => verify.mockReset());
 
 describe('avatars', () => {
-  test('POST creates avatar for header user', async () => {
-    const res = await request(app).post('/api/avatars').set('x-user-id', userId).send({ name: 'New One', bio: 'hi' }).expect(201);
+  test('POST creates avatar for the signed-in user', async () => {
+    const res = await request(app).post('/api/avatars').send({ name: 'New One', bio: 'hi' }).expect(201);
     expect(res.body.user_id).toBe(userId); expect(res.body.avatar_type).toBe('individual');
   });
   test('POST with telegram id records verification when bot confirms', async () => {
     verify.mockResolvedValue(true);
-    const res = await request(app).post('/api/avatars').set('x-user-id', userId).send({ name: 'TG User', telegram_chat_id: TG() }).expect(201);
+    const res = await request(app).post('/api/avatars').send({ name: 'TG User', telegram_chat_id: TG() }).expect(201);
     expect(res.body.telegram_verified_at).toBeTruthy();
   });
   test('POST with telegram id but failed verification still creates avatar unverified', async () => {
     verify.mockResolvedValue(false);
-    const res = await request(app).post('/api/avatars').set('x-user-id', userId).send({ name: 'TG Unverified', telegram_chat_id: TG() }).expect(201);
+    const res = await request(app).post('/api/avatars').send({ name: 'TG Unverified', telegram_chat_id: TG() }).expect(201);
     expect(res.body.telegram_verified_at).toBeNull();
   });
   test('POST rejects invalid payload', async () => {
@@ -65,10 +69,11 @@ describe('avatars', () => {
     expect(res.body.id).toBe(a1);
     await request(app).get(`/api/avatars/${Z}`).expect(404);
   });
-  test('GET /avatars requires header, lists own avatars', async () => {
-    await request(app).get('/api/avatars').expect(401);
-    const res = await request(app).get('/api/avatars').set('x-user-id', userId).expect(200);
-    expect(res.body.map((a: any) => a.id)).toEqual(expect.arrayContaining([a1, a2]));
+  test('GET /avatars lists only the signed-in user\'s avatars', async () => {
+    const res = await request(app).get('/api/avatars').expect(200);
+    const ids = res.body.map((a: any) => a.id);
+    expect(ids).toEqual(expect.arrayContaining([a1, a2]));
+    expect(ids).not.toContain(outsider); // another user's avatar must not leak
   });
   test('PATCH telegram: 400 unverifiable, 404 unknown avatar, 200 success', async () => {
     verify.mockResolvedValue(false);

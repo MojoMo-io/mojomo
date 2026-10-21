@@ -236,3 +236,88 @@ CREATE TABLE IF NOT EXISTS mojomo.sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON mojomo.sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON mojomo.sessions(expires_at);
+
+-- ============================================================
+-- Phase 6: avatar-mediated matchmaking (see migrations/2026-09-04-phase6-avatar-mediation.sql)
+-- ============================================================
+ALTER TABLE mojomo.avatars ADD COLUMN IF NOT EXISTS is_npc BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE mojomo.avatars ADD COLUMN IF NOT EXISTS is_support BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE mojomo.avatars ADD COLUMN IF NOT EXISTS system_prompt TEXT;
+ALTER TABLE mojomo.avatars ADD COLUMN IF NOT EXISTS personality_profile JSONB;
+CREATE INDEX IF NOT EXISTS idx_avatars_is_npc ON mojomo.avatars(is_npc) WHERE is_npc = true;
+
+ALTER TABLE mojomo.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE mojomo.message_queue ADD COLUMN IF NOT EXISTS job_type VARCHAR(50) NOT NULL DEFAULT 'reasoning';
+ALTER TABLE mojomo.message_queue ADD COLUMN IF NOT EXISTS payload JSONB;
+ALTER TABLE mojomo.message_queue ALTER COLUMN reasoning_logs_id DROP NOT NULL;
+ALTER TABLE mojomo.message_queue ALTER COLUMN conversation_id DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_message_queue_job_type ON mojomo.message_queue(job_type, status);
+
+CREATE TABLE IF NOT EXISTS mojomo.avatar_direct_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  avatar_id UUID NOT NULL REFERENCES mojomo.avatars(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL,
+  content TEXT NOT NULL,
+  source VARCHAR(20) NOT NULL DEFAULT 'web',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_adm_avatar_id ON mojomo.avatar_direct_messages(avatar_id, created_at);
+
+CREATE TABLE IF NOT EXISTS mojomo.avatar_hints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  avatar_id UUID NOT NULL REFERENCES mojomo.avatars(id) ON DELETE CASCADE,
+  suggested_avatar_id UUID NOT NULL REFERENCES mojomo.avatars(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_avatar_hints_avatar_id ON mojomo.avatar_hints(avatar_id, status);
+
+CREATE TABLE IF NOT EXISTS mojomo.telegram_link_tokens (
+  token VARCHAR(64) PRIMARY KEY,
+  avatar_id UUID NOT NULL REFERENCES mojomo.avatars(id) ON DELETE CASCADE,
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_link_tokens_avatar ON mojomo.telegram_link_tokens(avatar_id);
+
+-- ============================================================
+-- Phase 7: external data connectors (see migrations/2026-09-04-phase7-external-connectors.sql)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS mojomo.oauth_states (
+  state VARCHAR(64) PRIMARY KEY,
+  avatar_id UUID NOT NULL REFERENCES mojomo.avatars(id) ON DELETE CASCADE,
+  provider VARCHAR(50) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_states_avatar ON mojomo.oauth_states(avatar_id);
+
+CREATE TABLE IF NOT EXISTS mojomo.avatar_external_connections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  avatar_id UUID NOT NULL REFERENCES mojomo.avatars(id) ON DELETE CASCADE,
+  provider VARCHAR(50) NOT NULL,
+  account_label TEXT,
+  access_token_enc TEXT NOT NULL,
+  refresh_token_enc TEXT,
+  token_expires_at TIMESTAMP NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'connected',
+  last_synced_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE (avatar_id, provider)
+);
+
+CREATE TABLE IF NOT EXISTS mojomo.avatar_external_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  connection_id UUID NOT NULL REFERENCES mojomo.avatar_external_connections(id) ON DELETE CASCADE,
+  avatar_id UUID NOT NULL REFERENCES mojomo.avatars(id) ON DELETE CASCADE,
+  external_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  snippet TEXT NOT NULL,
+  source_type VARCHAR(50) NOT NULL,
+  fetched_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE (connection_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_aed_avatar_id ON mojomo.avatar_external_documents(avatar_id);

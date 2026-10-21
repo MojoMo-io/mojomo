@@ -1,6 +1,6 @@
 // Magic-link authentication + sessions (Phase 5, first build).
-// Access is gated by a single site password; identity comes from a single-use emailed link.
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+// Open signup by email; identity comes from a single-use emailed link.
+import { createHash, randomBytes } from 'crypto';
 import * as db from './db';
 
 export const MAGIC_LINK_TTL_MIN = Number(process.env.MAGIC_LINK_TTL_MIN || 20);
@@ -11,15 +11,6 @@ export const hashToken = (t: string) => createHash('sha256').update(t).digest('h
 export const randomToken = () => randomBytes(32).toString('base64url');
 export const normalizeEmail = (e: string) => e.trim().toLowerCase();
 export const isValidEmail = (e: string) => /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/.test(e);
-
-/** Constant-time check of the shared site password. Unset password = site locked to everyone. */
-export function verifyAccessPassword(candidate: string | undefined): boolean {
-  const expected = process.env.SITE_ACCESS_PASSWORD;
-  if (!expected || typeof candidate !== 'string') return false;
-  const a = createHash('sha256').update(candidate).digest();
-  const b = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(a, b);
-}
 
 export function publicUrl(): string {
   return (process.env.PUBLIC_URL || 'https://mojomo.io').replace(/\/$/, '');
@@ -110,10 +101,15 @@ export async function isParticipant(userId: string, conversationId: string): Pro
   return r.rows.length > 0;
 }
 
+export async function isAdmin(userId: string): Promise<boolean> {
+  const r = await db.query('SELECT is_admin FROM mojomo.users WHERE id = $1', [userId]);
+  return r.rows.length > 0 && r.rows[0].is_admin === true;
+}
+
 export async function purgeExpiredAuth(): Promise<{ tokens: number; sessions: number }> {
   const t = await db.query(`DELETE FROM mojomo.auth_tokens WHERE expires_at < NOW() - interval '1 day' OR used_at < NOW() - interval '1 day'`);
   const s = await db.query(`DELETE FROM mojomo.sessions WHERE expires_at < NOW()`);
   return { tokens: t.rowCount || 0, sessions: s.rowCount || 0 };
 }
 
-export default { verifyAccessPassword, createMagicLink, consumeMagicLink, getSession, destroySession, ownsAvatar, isParticipant, purgeExpiredAuth };
+export default { createMagicLink, consumeMagicLink, getSession, destroySession, ownsAvatar, isParticipant, isAdmin, purgeExpiredAuth };

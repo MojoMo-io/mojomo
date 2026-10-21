@@ -19,11 +19,19 @@ export function parseCookies(header: string | undefined): Record<string, string>
   return out;
 }
 
+// Shared across mojomo.io and support.mojomo.io so one magic-link login covers both. Set
+// COOKIE_DOMAIN='' to disable if this ever needs to be host-only again.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN ?? '.mojomo.io';
+
 export function sessionCookie(value: string, maxAgeSeconds: number): string {
   const secure = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
-  return `${auth.SESSION_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`;
+  const domain = COOKIE_DOMAIN ? `; Domain=${COOKIE_DOMAIN}` : '';
+  return `${auth.SESSION_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${domain}${secure ? '; Secure' : ''}`;
 }
-export const clearSessionCookie = () => `${auth.SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+export const clearSessionCookie = () => {
+  const domain = COOKIE_DOMAIN ? `; Domain=${COOKIE_DOMAIN}` : '';
+  return `${auth.SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${domain}`;
+};
 
 /** Resolve the session cookie. Client-supplied x-user-id is never trusted: it is replaced by the session's user. */
 export async function attachSession(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -60,6 +68,18 @@ export function validateIdParams(req: Request, res: Response, next: NextFunction
     }
   }
   next();
+}
+
+/** Admin-only routes (support dashboard). Applied after requireAuth. */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const r = await auth.isAdmin(req.auth!.userId);
+    if (!r) { res.status(403).json({ error: 'Admin access required' }); return; }
+    next();
+  } catch (e) {
+    console.error('Admin check failed:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 }
 
 /**

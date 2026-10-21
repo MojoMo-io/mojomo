@@ -1,8 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY,
-});
+import { complete, estimateCost } from './llm';
 
 export interface ReasoningRequest {
   conversation_id: string;
@@ -55,7 +51,7 @@ export function parseReasoningJson(text: string): ReasoningResponse {
   const start = t.indexOf('{');
   const end = t.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) {
-    throw new Error('No JSON object in Claude response');
+    throw new Error('No JSON object in model response');
   }
   return JSON.parse(t.slice(start, end + 1)) as ReasoningResponse;
 }
@@ -71,28 +67,15 @@ export async function callClaudeReasoning(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const message = await client.messages.create({
-        model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      });
-
-      const textContent = message.content.find((block) => block.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response');
-      }
-
-      const responseText = textContent.text.trim();
-      const response: ReasoningResponse = parseReasoningJson(responseText);
-
-      const inputTokens = message.usage.input_tokens;
-      const outputTokens = message.usage.output_tokens;
-      const inRate = Number(process.env.CLAUDE_COST_INPUT_PER_MTOK || 3);
-      const outRate = Number(process.env.CLAUDE_COST_OUTPUT_PER_MTOK || 15);
-      const cost = (inputTokens / 1_000_000) * inRate + (outputTokens / 1_000_000) * outRate;
-
-      return { response, tokensUsed: inputTokens + outputTokens, cost };
+      // Transport-level retries live in llm.complete(); this loop retries *unparseable* output,
+      // which is a model-quality problem rather than a network one.
+      const result = await complete(
+        { system: systemPrompt, user: userPrompt, maxTokens: 1024, json: true },
+        1
+      );
+      const response: ReasoningResponse = parseReasoningJson(result.text);
+      const cost = estimateCost(result.inputTokens, result.outputTokens);
+      return { response, tokensUsed: result.inputTokens + result.outputTokens, cost };
     } catch (error) {
       lastError = error as Error;
       if (attempt < maxAttempts) {
@@ -101,7 +84,7 @@ export async function callClaudeReasoning(
     }
   }
 
-  throw lastError || new Error('Failed to get Claude reasoning');
+  throw lastError || new Error('Failed to get reasoning response');
 }
 
 export function estimateTokens(prompt: string): number {

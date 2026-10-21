@@ -66,7 +66,37 @@ export async function sendTelegramNotification(
   }
 }
 
+let cachedBotUsername: string | null = null;
+
+/** Bot username for building t.me deep links. Cached after first successful lookup. */
+export async function getBotUsername(): Promise<string | null> {
+  if (cachedBotUsername) return cachedBotUsername;
+  if (!BOT_TOKEN) return null;
+  try {
+    const response = await telegramApi.get('/getMe');
+    cachedBotUsername = response.data?.result?.username || null;
+    return cachedBotUsername;
+  } catch (error: any) {
+    console.error('Failed to fetch bot username:', error.message);
+    return null;
+  }
+}
+
+/** Register the inbound webhook with Telegram. Run once at deploy time (or idempotently at boot). */
+export async function setWebhook(url: string): Promise<boolean> {
+  if (!BOT_TOKEN) return false;
+  try {
+    const response = await telegramApi.post('/setWebhook', { url });
+    return !!response.data?.ok;
+  } catch (error: any) {
+    console.error('setWebhook failed:', error.message);
+    return false;
+  }
+}
+
 export default {
   verifyTelegramChat,
   sendTelegramNotification,
+  getBotUsername,
+  setWebhook,
 };

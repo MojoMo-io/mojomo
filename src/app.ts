@@ -13,8 +13,16 @@ import specialistRoutes from './routes/specialists';
 import payoutRoutes from './routes/payouts';
 import messageRoutes from './routes/messages';
 import ideaRoutes from './routes/ideas';
+import ideaSurfacingRoutes from './routes/idea-surfacing';
 import conversationEndRoutes from './routes/conversation-end';
 import reasoningRoutes from './routes/reasoning';
+import avatarChatRoutes from './routes/avatar-chat';
+import adminRoutes from './routes/admin';
+import agentApiRoutes from './routes/agentApi';
+import agentClaimPage from './routes/agentClaimPage';
+import openapiRoutes from './routes/openapi';
+import { linkRouter as telegramLinkRoutes, webhookRouter as telegramWebhookRoutes } from './routes/telegram';
+import { ownerRouter as connectionsOwnerRoutes, callbackRouter as connectionsCallbackRoutes } from './routes/connections';
 
 export function allowedOrigins(): string[] {
   const base = (process.env.PUBLIC_URL || 'https://mojomo.io').replace(/\/$/, '');
@@ -42,6 +50,8 @@ export function createApp(): express.Application {
     res.status(ok ? 200 : 503).json({ status: ok ? 'healthy' : 'unhealthy', timestamp: new Date().toISOString() });
   });
   app.get('/metrics', metricsHandler);
+  app.use('/api', telegramWebhookRoutes); // Telegram's servers call this directly - no session cookie to check
+  app.use('/api', connectionsCallbackRoutes); // OAuth provider redirect - no session cookie of its own; the `state` param proves the avatar
 
   const apiLimiter = rateLimit({
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
@@ -50,9 +60,12 @@ export function createApp(): express.Application {
     message: { error: 'Too many requests' },
   });
   app.use('/api', apiLimiter, validateIdParams);
+  app.use(openapiRoutes);                             // /openapi.json
+  app.use(agentClaimPage);                            // human-facing claim page (HTML)
+  app.use('/api', agentApiRoutes);                   // agent-facing: Bearer auth, no session cookie
   app.use('/api', authRoutes);                       // public: magic-link, verify, check, me, logout
   app.use('/api', attachSession, requireAuth, enforceOwnership);
-  for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, conversationEndRoutes, reasoningRoutes]) app.use('/api', r);
+  for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, ideaSurfacingRoutes, conversationEndRoutes, reasoningRoutes, avatarChatRoutes, adminRoutes, telegramLinkRoutes, connectionsOwnerRoutes]) app.use('/api', r);
 
   app.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {

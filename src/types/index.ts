@@ -1,5 +1,14 @@
 // Type definitions for MOJOMO
 
+export interface PersonalityProfile {
+  interests: string[];
+  specialisms: string[];
+  values: string[];
+  communication_style: string;
+  /** Compact paragraph usable directly as (part of) the avatar's system prompt. */
+  summary: string;
+}
+
 export interface Avatar {
   id: string;
   user_id: string;
@@ -8,8 +17,30 @@ export interface Avatar {
   avatar_type: 'individual' | 'specialist' | 'collective';
   telegram_chat_id?: number;
   telegram_verified_at?: Date;
+  is_npc: boolean;
+  is_support: boolean;
+  system_prompt?: string;
+  personality_profile?: PersonalityProfile;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface AvatarDirectMessage {
+  id: string;
+  avatar_id: string;
+  role: 'human' | 'avatar';
+  content: string;
+  source: 'web' | 'telegram';
+  created_at: Date;
+}
+
+export interface AvatarHint {
+  id: string;
+  avatar_id: string;
+  suggested_avatar_id: string;
+  reason: string;
+  status: 'pending' | 'accepted' | 'dismissed';
+  created_at: Date;
 }
 
 export interface OwnershipEntry {
@@ -45,7 +76,7 @@ export interface ConversationMessage {
   conversation_id: string;
   avatar_id: string;
   message_content: string;
-  message_type: 'user_message' | 'ai_response';
+  message_type: 'user_message' | 'ai_response' | 'avatar_message';
   reasoning_trace?: Record<string, any>;
   idea_score?: number;
   created_at: Date;

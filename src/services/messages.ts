@@ -71,7 +71,7 @@ export async function storeMessage(
   conversation_id: string,
   avatar_id: string,
   message_content: string,
-  message_type: 'user_message' | 'ai_response',
+  message_type: 'user_message' | 'ai_response' | 'avatar_message',
   reasoning_trace?: Record<string, any>,
   idea_score?: number
 ): Promise<ConversationMessage> {

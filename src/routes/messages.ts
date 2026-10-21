@@ -11,7 +11,7 @@ const router = Router();
 const StoreMessageSchema = z.object({
   avatar_id: z.string().uuid(),
   message_content: z.string().min(1).max(10000),
-  message_type: z.enum(['user_message', 'ai_response']),
+  message_type: z.enum(['user_message', 'ai_response', 'avatar_message']),
   reasoning_trace: z.record(z.any()).optional(),
   idea_score: z.number().min(0).max(1).optional(),
 });

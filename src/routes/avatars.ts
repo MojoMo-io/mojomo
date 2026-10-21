@@ -28,14 +28,10 @@ router.post('/avatars', async (req: Request, res: Response) => {
   try {
     const payload = CreateAvatarSchema.parse(req.body);
 
-    // For now, use a placeholder user_id (in real app, from JWT)
-    const user_id = (req.headers['x-user-id'] as string) || uuidv4();
-    // There is no signup flow in the first build: the x-user-id header is the workspace identity.
-    // Make sure the user row exists so the avatar FK holds.
-    await db.query(
-      'INSERT INTO mojomo.users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
-      [user_id, `${user_id}@anonymous.mojomo.io`]
-    );
+    // The avatar belongs to the signed-in user. This route sits behind requireAuth, so
+    // req.auth is always present; the old x-user-id header fallback let any caller mint an
+    // avatar under someone else's id and is gone.
+    const user_id = req.auth!.userId;
 
     let telegram_verified_at: Date | null = null;
 
@@ -101,15 +97,26 @@ router.get('/avatars/:id', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /npc-avatars - Public list of house-owned NPC/public-figure avatars any user can discover.
+ */
+router.get('/npc-avatars', async (req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT id, name, bio, is_support, personality_profile FROM mojomo.avatars WHERE is_npc = true ORDER BY is_support ASC, name ASC`
+    );
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('Error listing NPC avatars:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /avatars - List avatars for authenticated user
  */
 router.get('/avatars', async (req: Request, res: Response) => {
   try {
-    const user_id = req.headers['x-user-id'] as string;
-
-    if (!user_id) {
-      return res.status(401).json({ error: 'User ID required in x-user-id header' });
-    }
+    const user_id = req.auth!.userId;
 
     const result = await db.query(
       'SELECT * FROM mojomo.avatars WHERE user_id = $1 ORDER BY created_at DESC',

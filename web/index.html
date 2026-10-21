@@ -148,21 +148,41 @@ footer{padding:34px 0 52px;display:flex;justify-content:space-between;align-item
       <input id="avBio" placeholder="Optional" maxlength="1000">
       <div class="row"><button class="btn" id="avCreate">Create avatar</button></div>
       <ul class="list" id="avList"></ul>
-      <p class="note">Select an avatar to act as. Share its ID with your co-creator so they can invite you.</p>
+      <p class="note" id="cvAs"></p>
+
+      <h2 style="font-size:22px;margin-top:40px">Your avatar, privately<small>The only place you speak directly. Your avatar speaks to others on your behalf.</small></h2>
+      <div class="thread" id="assistantThread" style="max-height:320px"></div>
+      <div class="compose">
+        <textarea id="assistantBody" placeholder="Talk to your avatar. Ask it to connect you with someone, by name, topic, or specialism."></textarea>
+        <div class="row"><button class="btn" id="assistantSend">Send</button></div>
+      </div>
+      <div id="hintsBox"></div>
+      <div class="row"><button class="btn quiet" id="tgConnect">Connect Telegram</button></div>
+      <div class="note" id="tgStatus"></div>
+
+      <h2 style="font-size:22px;margin-top:40px">Your avatar's private data<small>Only your own avatar ever sees this - never shared with anyone else's.</small></h2>
+      <div id="connectionsBox"></div>
+
+      <p class="note" style="margin-top:18px">No API access exists for LinkedIn, Facebook, or Instagram profile data (see the project notes) - but you can export your own data from each platform yourself (usually Settings &rarr; "Download your information") and upload the files here instead.</p>
+      <label class="eyebrow" for="uploadProvider">Source</label>
+      <select id="uploadProvider">
+        <option value="linkedin">LinkedIn</option>
+        <option value="facebook">Facebook</option>
+        <option value="instagram">Instagram</option>
+        <option value="other">Other</option>
+      </select>
+      <label class="eyebrow" for="uploadFile">Exported file (JSON or CSV - unzip first if you got a .zip)</label>
+      <input type="file" id="uploadFile" accept=".json,.csv,.txt">
+      <div class="row"><button class="btn quiet" id="uploadSend">Upload</button></div>
+      <div class="note" id="uploadStatus"></div>
     </div>
 
     <!-- CONVERSATIONS -->
     <div class="col">
       <div class="eyebrow">II</div>
-      <h2>Conversations<small>A creator, a co-creator, and a table between them.</small></h2>
+      <h2>Conversations<small>Your avatar and another, speaking for themselves.</small></h2>
       <div id="convHome">
-        <label class="eyebrow" for="cvTitle">Title</label>
-        <input id="cvTitle" placeholder="What are we thinking about?" maxlength="255">
-        <label class="eyebrow" for="cvDesc">Intention</label>
-        <input id="cvDesc" placeholder="Optional" maxlength="1000">
-        <label class="eyebrow" for="cvPartner">Co-creator’s avatar ID</label>
-        <input id="cvPartner" placeholder="Paste the avatar ID they shared with you">
-        <div class="row"><button class="btn" id="cvCreate">Open a conversation</button><span class="note" id="cvAs"></span></div>
+        <p class="note">Conversations start when your avatar finds or is asked to find a good connection — never by pasting an ID. Ask it in the chat to your left.</p>
         <ul class="list" id="cvList"></ul>
       </div>
       <div id="convView" hidden>
@@ -171,10 +191,8 @@ footer{padding:34px 0 52px;display:flex;justify-content:space-between;align-item
         <div class="note" id="cvMeta"></div>
         <div class="thread" id="thread"></div>
         <div class="compose">
-          <label class="eyebrow" for="msgBody">Speak</label>
-          <textarea id="msgBody" placeholder="Say what you are really thinking."></textarea>
+          <p class="note">Both sides here are spoken by avatars, not typed by you - this is your avatar's exchange, not your own. It updates live.</p>
           <div class="row">
-            <button class="btn" id="msgSend">Send</button>
             <button class="btn ghost" id="reflect">Ask MOJOMO to reflect</button>
             <button class="btn quiet" id="cvEnd">End conversation</button>
           </div>
@@ -248,15 +266,126 @@ footer{padding:34px 0 52px;display:flex;justify-content:space-between;align-item
       li.onclick = (e) => { if (e.target.dataset.copy) { navigator.clipboard?.writeText(e.target.dataset.copy); toast('Avatar ID copied'); return; } state.actingAs = a.id; localStorage.setItem('mojomo.actingAs', a.id); loadAvatars(); renderAs(); };
       ul.appendChild(li);
     }
-    renderAs(); loadConversations();
+    renderAs(); loadConversations(); loadAssistantThread(); loadHints(); loadConnections();
   }
-  function renderAs() { $('cvAs').textContent = state.actingAs ? `as ${nameOf(state.actingAs)}` : 'Create an avatar first.'; }
+  function renderAs() { $('cvAs').textContent = state.actingAs ? `Acting as ${nameOf(state.actingAs)}.` : 'Create an avatar first.'; }
   $('avCreate').onclick = async () => {
     const name = $('avName').value.trim(), bio = $('avBio').value.trim();
     if (name.length < 2) return toast('Give your avatar a name (2+ characters)', true);
     try { const a = await api('POST', '/api/avatars', { name, bio: bio || undefined }); $('avName').value = ''; $('avBio').value = ''; state.actingAs = a.id; localStorage.setItem('mojomo.actingAs', a.id); toast(`${a.name} is in the room`); loadAvatars(); }
     catch (e) { toast(e.message, true); }
   };
+
+  /* private chat with your own avatar */
+  function renderAssistantMsg(m) {
+    const d = document.createElement('div'); d.className = 'msg' + (m.role === 'avatar' ? ' ai' : '');
+    d.innerHTML = `<div class="who">${m.role === 'avatar' ? 'Your avatar' : 'You'}</div><div class="body">${esc(m.content)}</div>`;
+    return d;
+  }
+  async function loadAssistantThread() {
+    const box = $('assistantThread'); if (!state.actingAs) { box.innerHTML = '<p class="empty">Create an avatar first.</p>'; return; }
+    try {
+      const r = await api('GET', `/api/avatars/${state.actingAs}/chat`);
+      box.innerHTML = '';
+      for (const m of r.messages) box.appendChild(renderAssistantMsg(m));
+      box.scrollTop = box.scrollHeight;
+    } catch (e) { box.innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
+  }
+  $('assistantSend').onclick = async () => {
+    const body = $('assistantBody').value.trim(); if (!body) return;
+    if (!state.actingAs) return toast('Create an avatar first', true);
+    $('assistantBody').value = '';
+    $('assistantThread').appendChild(renderAssistantMsg({ role: 'human', content: body }));
+    try {
+      const r = await api('POST', `/api/avatars/${state.actingAs}/chat`, { message: body });
+      $('assistantThread').appendChild(renderAssistantMsg(r.reply));
+      $('assistantThread').scrollTop = $('assistantThread').scrollHeight;
+      if (r.connection) { toast(`Your avatar reached out to ${r.connection.matched_avatar_name}`); loadConversations(); }
+    } catch (e) { toast(e.message, true); }
+  };
+
+  /* telegram linking */
+  $('tgConnect').onclick = async () => {
+    if (!state.actingAs) return toast('Create an avatar first', true);
+    const st = $('tgStatus'); st.textContent = 'Generating link...';
+    try {
+      const r = await api('POST', `/api/avatars/${state.actingAs}/telegram/link`, {});
+      st.innerHTML = `<a href="${r.link}" target="_blank">${r.link}</a> - opens Telegram, tap Start, done.`;
+    } catch (e) { st.textContent = e.message; }
+  };
+
+  /* external data connectors */
+  const PROVIDER_LABEL = {
+    google_drive: 'Google Drive', google_gmail: 'Gmail', google_calendar: 'Google Calendar',
+    microsoft_onedrive: 'Microsoft OneDrive', microsoft_outlook_mail: 'Outlook Mail', microsoft_outlook_calendar: 'Outlook Calendar',
+    linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', other: 'Other upload',
+  };
+  function connectionRow(provider, connected) {
+    const row = document.createElement('div'); row.className = 'row';
+    if (connected) {
+      row.innerHTML = `<span>${PROVIDER_LABEL[provider] || provider}: ${esc(connected.account_label || 'connected')} <span class="chip on">${esc(connected.status)}</span></span>`;
+      const btn = document.createElement('button'); btn.className = 'linklike'; btn.textContent = 'Disconnect'; btn.style.marginLeft = '10px';
+      btn.onclick = async () => { try { await api('DELETE', `/api/avatars/${state.actingAs}/connections/${provider}`); loadConnections(); } catch (e) { toast(e.message, true); } };
+      row.appendChild(btn);
+    } else {
+      const btn = document.createElement('button'); btn.className = 'btn quiet'; btn.textContent = `Connect ${PROVIDER_LABEL[provider] || provider}`;
+      btn.onclick = async () => {
+        try { const r = await api('GET', `/api/avatars/${state.actingAs}/connections/${provider}/start`); location.href = r.url; }
+        catch (e) { toast(e.message, true); }
+      };
+      row.appendChild(btn);
+    }
+    return row;
+  }
+  async function loadConnections() {
+    const box = $('connectionsBox'); if (!state.actingAs) { box.innerHTML = ''; return; }
+    let data = { connected: [], available_providers: [] };
+    try { data = await api('GET', `/api/avatars/${state.actingAs}/connections`); } catch {}
+    box.innerHTML = '';
+    const connectedByProvider = {}; for (const c of data.connected) connectedByProvider[c.provider] = c;
+    // OAuth providers: offer connect/disconnect either way. Anything else connected (manual uploads
+    // like linkedin/facebook/instagram) only shows once something's actually been uploaded.
+    const shown = new Set(data.available_providers);
+    for (const provider of data.available_providers) box.appendChild(connectionRow(provider, connectedByProvider[provider]));
+    for (const provider of Object.keys(connectedByProvider)) {
+      if (shown.has(provider)) continue;
+      box.appendChild(connectionRow(provider, connectedByProvider[provider]));
+    }
+  }
+
+  /* manual data-export upload */
+  $('uploadSend').onclick = async () => {
+    if (!state.actingAs) return toast('Create an avatar first', true);
+    const file = $('uploadFile').files[0];
+    if (!file) return toast('Choose a file first', true);
+    if (file.size > 3_000_000) return toast('That file is too large (max ~3MB of text) - try a smaller export file', true);
+    const st = $('uploadStatus'); st.textContent = 'Uploading...';
+    try {
+      const content = await file.text();
+      await api('POST', `/api/avatars/${state.actingAs}/connections/upload`, { provider: $('uploadProvider').value, filename: file.name, content });
+      st.textContent = `${file.name} uploaded - your avatar's profile will update shortly.`;
+      $('uploadFile').value = '';
+      loadConnections();
+    } catch (e) { st.textContent = ''; toast(e.message, true); }
+  };
+
+  /* proactive hints */
+  async function loadHints() {
+    const box = $('hintsBox'); if (!state.actingAs) { box.innerHTML = ''; return; }
+    let hints = [];
+    try { hints = await api('GET', `/api/avatars/${state.actingAs}/hints`); } catch { hints = []; }
+    box.innerHTML = '';
+    for (const h of hints) {
+      const d = document.createElement('div'); d.className = 'note';
+      d.innerHTML = `<em>Your avatar suggests connecting with ${esc(h.suggested_avatar_name)}:</em> ${esc(h.reason)} `;
+      const accept = document.createElement('button'); accept.className = 'linklike'; accept.textContent = 'Accept';
+      const dismiss = document.createElement('button'); dismiss.className = 'linklike'; dismiss.textContent = 'Dismiss'; dismiss.style.marginLeft = '10px';
+      accept.onclick = async () => { try { await api('POST', `/api/avatars/${state.actingAs}/hints/${h.id}`, { decision: 'accept' }); toast('Connecting...'); loadHints(); loadConversations(); } catch (e) { toast(e.message, true); } };
+      dismiss.onclick = async () => { try { await api('POST', `/api/avatars/${state.actingAs}/hints/${h.id}`, { decision: 'dismiss' }); loadHints(); } catch (e) { toast(e.message, true); } };
+      d.appendChild(accept); d.appendChild(dismiss);
+      box.appendChild(d);
+    }
+  }
 
   /* conversations */
   async function loadConversations() {
@@ -270,16 +399,10 @@ footer{padding:34px 0 52px;display:flex;justify-content:space-between;align-item
       ul.appendChild(li);
     }
   }
-  $('cvCreate').onclick = async () => {
-    const title = $('cvTitle').value.trim(), description = $('cvDesc').value.trim(), partner = $('cvPartner').value.trim();
-    if (!state.actingAs) return toast('Create or select an avatar first', true);
-    if (!title) return toast('Give the conversation a title', true);
-    if (!/^[0-9a-f-]{36}$/i.test(partner)) return toast('Paste your co-creator’s avatar ID', true);
-    try { const c = await api('POST', '/api/conversations', { initiator_avatar_id: state.actingAs, target_avatar_id: partner, title, description: description || undefined }); $('cvTitle').value = ''; $('cvDesc').value = ''; $('cvPartner').value = ''; toast('The conversation is open'); await loadConversations(); openConversation(c.id); }
-    catch (e) { toast(e.message, true); }
-  };
-  function showHome() { $('convView').hidden = true; $('convHome').hidden = false; state.current = null; $('ideas').innerHTML = '<p class="empty">Open a conversation to see its ideas.</p>'; }
+  function showHome() { $('convView').hidden = true; $('convHome').hidden = false; state.current = null; stopThreadPolling(); $('ideas').innerHTML = '<p class="empty">Open a conversation to see its ideas.</p>'; }
   $('cvBack').onclick = () => { showHome(); loadConversations(); };
+  let threadPoll = null;
+  function stopThreadPolling() { if (threadPoll) { clearInterval(threadPoll); threadPoll = null; } }
 
   async function openConversation(id) {
     try { state.current = await api('GET', `/api/conversations/${id}`); } catch (e) { return toast(e.message, true); }
@@ -289,9 +412,11 @@ footer{padding:34px 0 52px;display:flex;justify-content:space-between;align-item
     $('cvHeading').textContent = c.title;
     $('cvMeta').innerHTML = `${esc(nameOf(c.initiator_avatar_id))} & ${esc(nameOf(c.target_avatar_id))} · opened ${new Date(c.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}${c.description ? ' · ' + esc(c.description) : ''} · <span class="chip${c.status === 'active' ? ' on' : ''}">${esc(c.status)}</span>`;
     const ended = c.status !== 'active';
-    for (const id2 of ['msgSend', 'reflect', 'cvEnd']) $(id2).disabled = ended;
+    for (const id2 of ['reflect', 'cvEnd']) $(id2).disabled = ended;
     $('reflectStatus').textContent = ended ? 'This conversation has ended.' : '';
     await Promise.all([loadThread(), loadIdeas()]);
+    stopThreadPolling();
+    if (!ended) threadPoll = setInterval(loadThread, 4000);
   }
   async function loadThread() {
     const c = state.current; if (!c) return;
@@ -301,19 +426,14 @@ footer{padding:34px 0 52px;display:flex;justify-content:space-between;align-item
     const t = $('thread'); t.innerHTML = '';
     if (!msgs.length) t.innerHTML = '<p class="empty">Silence, for now. Say the first thing.</p>';
     for (const m of msgs) {
-      const ai = m.message_type === 'ai_response';
-      const d = document.createElement('div'); d.className = 'msg' + (ai ? ' ai' : '');
-      d.innerHTML = `<div class="who">${ai ? 'MOJOMO reflects' : esc(nameOf(m.avatar_id))}</div><div class="body">${esc(m.message_content)}</div>`;
+      const reasoning = m.message_type === 'ai_response';
+      const d = document.createElement('div'); d.className = 'msg' + (reasoning ? ' ai' : '');
+      const who = reasoning ? 'MOJOMO reflects' : esc(nameOf(m.avatar_id));
+      d.innerHTML = `<div class="who">${who}</div><div class="body">${esc(m.message_content)}</div>`;
       t.appendChild(d);
     }
     t.scrollTop = t.scrollHeight;
   }
-  $('msgSend').onclick = async () => {
-    const body = $('msgBody').value.trim(); if (!body) return;
-    if (!state.actingAs) return toast('Select an avatar to speak as', true);
-    try { await api('POST', `/api/conversations/${state.current.id}/messages`, { avatar_id: state.actingAs, message_content: body, message_type: 'user_message' }); $('msgBody').value = ''; loadThread(); }
-    catch (e) { toast(e.status === 403 ? 'Only the creator and co-creator may speak here' : e.message, true); }
-  };
   $('reflect').onclick = async () => {
     const st = $('reflectStatus'); $('reflect').disabled = true;
     try {
@@ -397,6 +517,10 @@ footer{padding:34px 0 52px;display:flex;justify-content:space-between;align-item
   fetch(API + '/health').then(r => r.json()).then(h => { $('healthDot').className = 'dot ' + (h.status === 'healthy' ? 'ok' : 'bad'); $('healthText').textContent = h.status === 'healthy' ? 'All systems quiet' : 'Service degraded'; }).catch(() => { $('healthDot').className = 'dot bad'; $('healthText').textContent = 'Unreachable'; });
 
   whoami().then(loadAvatars);
+
+  const q = new URLSearchParams(location.search);
+  if (q.get('connected')) { toast(`${PROVIDER_LABEL[q.get('connected')] || q.get('connected')} connected`); history.replaceState(null, '', location.pathname); }
+  if (q.get('connection_error')) { toast(q.get('connection_error'), true); history.replaceState(null, '', location.pathname); }
 })();
 </script>
 </body>

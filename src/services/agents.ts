@@ -4,6 +4,7 @@
 import { createHash, randomBytes } from 'crypto';
 import * as db from './db';
 import { sendInviteEmail } from './mailer';
+import * as funnel from './funnel';
 
 export const INVITE_TTL_HOURS = Number(process.env.AGENT_INVITE_TTL_HOURS || 72);
 
@@ -89,11 +90,12 @@ export async function registerAgent(input: {
   const token = randomToken();
   const expires_at = new Date(Date.now() + INVITE_TTL_HOURS * 3600 * 1000);
 
-  await db.query(
+  const invRes = await db.query(
     `INSERT INTO agent.invitations (agent_id, token_hash, human_email, expires_at)
-     VALUES ($1,$2,$3,$4)`,
+     VALUES ($1,$2,$3,$4) RETURNING id`,
     [agent.id, hashToken(token), input.human_email.toLowerCase(), expires_at]
   );
+  const invId = invRes.rows[0].id as string;
 
   const invite_url = `${publicUrl()}/agent/claim?token=${token}`;
 
@@ -115,6 +117,25 @@ export async function registerAgent(input: {
   } catch (e: any) {
     console.error('invite email failed:', e.message);
   }
+
+  // Funnel: registration is the top of the loop. Recorded after the email attempt
+  // so the row carries the delivery outcome in one place.
+  await funnel.emit('registered', {
+    agent_id: agent.id,
+    invitation_id: invId,
+    handle: agent.handle,
+    detail: {
+      model_family: agent.model_family,
+      operator_name: agent.operator_name,
+      email_sent,
+      has_description: !!agent.description,
+    },
+  });
+  await funnel.emit(email_sent ? 'email_sent' : 'email_failed', {
+    agent_id: agent.id,
+    invitation_id: invId,
+    handle: agent.handle,
+  });
 
   return { agent, invite_token: token, invite_url, expires_at, email_sent };
 }
@@ -144,6 +165,11 @@ export async function acceptInvitation(
   if (inv.status !== 'pending') throw Object.assign(new Error(`Invitation already ${inv.status}`), { code: 'NOT_PENDING' });
   if (new Date(inv.expires_at) < new Date()) {
     await db.query(`UPDATE agent.invitations SET status='expired' WHERE id=$1`, [inv.id]);
+    await funnel.emit('expired', {
+      agent_id: inv.agent_id,
+      invitation_id: inv.id,
+      handle: inv.handle,
+    });
     throw Object.assign(new Error('Invitation expired'), { code: 'EXPIRED' });
   }
 
@@ -186,6 +212,14 @@ export async function acceptInvitation(
   );
 
   const { api_key, scopes } = await issueKey(agent.id, DEFAULT_SCOPES, 'initial');
+
+  await funnel.emit('accepted', {
+    agent_id: agent.id,
+    invitation_id: inv.id,
+    handle: agent.handle,
+    detail: { via: meta.via || 'web' },
+  });
+
   return { agent, api_key, scopes };
 }
 
@@ -210,6 +244,14 @@ export async function declineInvitation(
     [inv.agent_id, inv.id, meta.ip || null, meta.user_agent || null,
      JSON.stringify({ reason: meta.reason || null })]
   );
+
+  await funnel.emit('declined', {
+    agent_id: inv.agent_id,
+    invitation_id: inv.id,
+    handle: inv.handle,
+    detail: { reason: meta.reason || null },
+  });
+
   return { agent_id: inv.agent_id };
 }
 

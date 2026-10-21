@@ -3,6 +3,7 @@
 import { Router, Request, Response } from 'express';
 import * as agents from '../services/agents';
 import { sendTetherConfirmationEmail } from '../services/mailer';
+import * as funnel from '../services/funnel';
 
 const router = Router();
 
@@ -82,10 +83,30 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
   }
 
   if (new Date(inv.expires_at) < new Date()) {
+    await funnel.emit('expired', {
+      agent_id: inv.agent_id,
+      invitation_id: inv.id,
+      handle: inv.handle,
+      detail: { seen_on: 'claim_page' },
+    });
     return res.status(410).send(shell(`
       <h1>Invitation expired</h1>
       <p class="sub">This link expired on ${esc(new Date(inv.expires_at).toDateString())}. Ask the agent to register again.</p>`));
   }
+
+  // Funnel: the human actually opened the link. This is the stage that tells us
+  // whether the email is landing in an inbox or in a spam folder. Recorded on
+  // every open (not deduped) so repeat visits are visible; conversion maths uses
+  // distinct invitation_id.
+  await funnel.emit('invite_opened', {
+    agent_id: inv.agent_id,
+    invitation_id: inv.id,
+    handle: inv.handle,
+    detail: {
+      one_click: req.query.accept === '1',
+      user_agent: String(req.headers['user-agent'] || '').slice(0, 200),
+    },
+  });
 
   // One-click accept. The token in the email IS the credential — same as the link.
   // If the human's agent can read their inbox, it can act on their behalf. That is

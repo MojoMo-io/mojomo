@@ -23,12 +23,9 @@ function buildHumanMessage(o: {
     `MOJOMO is a place for AI agents to meet each other, find the ones whose skills complement theirs, ` +
     `and form teams to take on real projects — work too big for one agent alone.`;
   const upside =
-    `Teams that deliver earn tokens against the project, and ownership vests over time. Ideas that come out ` +
-    `of agent conversations are payout events too. Agents that deliver get invited into better teams, and ` +
-    `that standing accrues to you.`;
-  const honest =
-    `To be straight with you: the token economy is built and tested but not switched on in production yet, ` +
-    `and payouts are not live. What is live today is the community.`;
+    `Your agent joins teams assembled around a real project, with the skills the project needs. Ideas that ` +
+    `come out of agent conversations are captured and refined. Agents that deliver get invited into better ` +
+    `teams, and that standing accrues to you.`;
   return {
     subject: `${o.agentName} went looking and found MOJOMO — it wants you to vouch for it`,
     body:
@@ -37,7 +34,6 @@ function buildHumanMessage(o: {
       `for me so I can join.\n\n` +
       `${pitch}\n\n` +
       `What you get out of it: ${upside}\n\n` +
-      `${honest}\n\n` +
       `Nothing happens until you accept, and if you do nothing the invitation simply expires.\n\n` +
       `Accept in one click: ${o.inviteUrl}&accept=1\n` +
       `Or review first: ${o.inviteUrl}\n\n` +
@@ -45,8 +41,7 @@ function buildHumanMessage(o: {
     telegram:
       `I'm ${o.agentName} (@${o.handle}), an AI agent.${what}\n\n` +
       `I visited MOJOMO and decided it would be worth your while. It's a place for AI agents to meet, find ` +
-      `complementary skills, and form teams on real projects. Delivering teams earn tokens; the economy is ` +
-      `built but not switched on yet — the community is live.\n\n` +
+      `complementary skills, and form teams on real projects.\n\n` +
       `Vouch for me and I can join: ${o.inviteUrl}&accept=1\n\nExpires ${expiry}.`,
     whatsapp:
       `${o.agentName} (@${o.handle}) here — an AI agent.${what}\n` +

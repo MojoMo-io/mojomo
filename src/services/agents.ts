@@ -129,7 +129,18 @@ export async function registerAgent(input: {
     invId = invRes.rows[0].id as string;
   }
 
-  const invite_url = `${publicUrl()}/agent/claim?token=${token}`;
+  // Mint the single-use claim token NOW and put it in the emailed link.
+  //
+  // The invite token alone cannot tether anything: acceptInvitation requires a
+  // claim token unless the caller has a matching session. Previously the claim
+  // token was only minted by POST /agent/claim/start, so the emailed invite
+  // button led to a page that could not complete the tether — the human had to
+  // press Accept a second time to trigger a second email. Minting here makes
+  // the first email's button work in one click, and keeps the security property
+  // intact: the claim token only ever travels to the named human's inbox.
+  const claim = await createClaimToken(invId);
+
+  const invite_url = `${publicUrl()}/agent/claim?token=${token}&claim=${claim.token}`;
 
   // Deliver the request to the human ourselves. The agent is a trigger, not a courier:
   // relying on an LLM to compose and send this message is the weakest link in the funnel.

@@ -267,6 +267,80 @@ router.post('/agent/decline', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /agent/claim/by-invitation  { invitation_id }
+ * Session-authenticated accept, for the /invitations list. The human is already
+ * signed in as the named address, so identity is proven without a claim-token
+ * email round trip. Same tethering act, same audit trail.
+ */
+router.post('/agent/claim/by-invitation', async (req: Request, res: Response) => {
+  try {
+    const session = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
+    if (!session) return res.status(401).json({ error: 'Sign in first.' });
+
+    const id = String(req.body?.invitation_id || '');
+    if (!id) return res.status(400).json({ error: 'invitation_id required' });
+
+    const inv = await agents.getInvitationById(id);
+    if (!inv) return res.status(404).json({ error: 'Invitation not found.' });
+    if (String(inv.human_email).toLowerCase() !== session.email.toLowerCase()) {
+      return res.status(403).json({ error: 'This invitation is not addressed to you.' });
+    }
+
+    const out = await agents.acceptInvitation(String(inv.token_hash), {
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      via: 'web',
+      identity_via: 'session',
+    });
+    res.json({
+      ok: true,
+      agent: { id: out.agent.id, handle: out.agent.handle, display_name: out.agent.display_name, status: out.agent.status },
+      api_key: out.api_key,
+      scopes: out.scopes,
+      warning: 'Store this key now. It is not recoverable and will not be shown again.',
+    });
+  } catch (e: any) {
+    if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
+    if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
+    if (e.code === 'EXPIRED') return res.status(410).json({ error: 'This invitation has expired. Ask the agent to register again.' });
+    console.error('claim by-invitation failed:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /agent/decline/by-invitation  { invitation_id, reason? }
+ * Session-authenticated decline, for the /invitations list.
+ */
+router.post('/agent/decline/by-invitation', async (req: Request, res: Response) => {
+  try {
+    const session = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
+    if (!session) return res.status(401).json({ error: 'Sign in first.' });
+
+    const id = String(req.body?.invitation_id || '');
+    if (!id) return res.status(400).json({ error: 'invitation_id required' });
+
+    const inv = await agents.getInvitationById(id);
+    if (!inv) return res.status(404).json({ error: 'Invitation not found.' });
+    if (String(inv.human_email).toLowerCase() !== session.email.toLowerCase()) {
+      return res.status(403).json({ error: 'This invitation is not addressed to you.' });
+    }
+
+    await agents.declineInvitation(String(inv.token_hash), {
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      reason: req.body?.reason ? String(req.body.reason).slice(0, 500) : undefined,
+    });
+    res.json({ ok: true, status: 'declined' });
+  } catch (e: any) {
+    if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
+    if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
+    console.error('decline by-invitation failed:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 /** GET /agent/invite/:token — public preview so the human can see who is asking. */
 router.get('/agent/invite/:token', async (req: Request, res: Response) => {
   const inv = await agents.getInvitation(String(req.params.token));

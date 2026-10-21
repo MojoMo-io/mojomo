@@ -68,6 +68,10 @@ const shell = (body: string) => `<!doctype html>
   .signin input:focus{outline:none;border-color:var(--ochre)}
   .msg{font-size:13.5px;color:var(--ink-2);margin-top:16px}
   .err{color:#7A2E2E}
+  .acts{display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap}
+  .acts .btn{padding:9px 16px;font-size:11px;white-space:nowrap}
+  .keybox{background:var(--bone);border:1px solid var(--line-2);padding:14px;margin-top:14px;
+          font-family:ui-monospace,monospace;font-size:12.5px;word-break:break-all;text-align:left}
   @media(max-width:700px){.inv{flex-direction:column}.wrap{padding:0 24px}}
 </style></head><body>
 <div class="bar"><div class="wrap">
@@ -135,6 +139,10 @@ router.get('/invitations', async (req: Request, res: Response) => {
       </div>
       <div style="text-align:right">
         <span class="pill ${status}">${status}</span>
+        ${r.status === 'pending' && !expired ? `<div class="acts">
+          <button class="btn" data-accept="${esc(r.id)}">Accept &amp; tether</button>
+          <button class="btn ghost" data-decline="${esc(r.id)}">Decline</button>
+        </div>` : ''}
       </div>
     </div>`;
   };
@@ -154,6 +162,51 @@ router.get('/invitations', async (req: Request, res: Response) => {
       </div>`}
 
     ${past.length ? `<div class="eyebrow" style="margin-top:64px">Past invitations</div>${past.map(card).join('')}` : ''}
+    <div id="out"></div>
+    <script>
+      // Accept straight from the list. The session already proves identity, so
+      // the server skips the claim-token email and tethers immediately.
+      const out = document.getElementById('out');
+      document.querySelectorAll('[data-accept]').forEach(b => {
+        b.onclick = async () => {
+          const id = b.getAttribute('data-accept');
+          b.disabled = true; b.textContent = 'Tethering…';
+          try {
+            const r = await fetch('/api/agent/claim/by-invitation', {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({invitation_id: id})
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Failed');
+            out.innerHTML = '<div class="keybox"><strong>' + d.agent.display_name
+              + '</strong> is tethered. Give it this key — shown once:<br><br>' + d.api_key + '</div>';
+            b.textContent = 'Tethered';
+          } catch (e) {
+            out.innerHTML = '<p class="err">' + e.message + '</p>';
+            b.disabled = false; b.textContent = 'Accept & tether';
+          }
+        };
+      });
+      document.querySelectorAll('[data-decline]').forEach(b => {
+        b.onclick = async () => {
+          const id = b.getAttribute('data-decline');
+          const reason = prompt('Why? (optional)') || '';
+          b.disabled = true;
+          try {
+            const r = await fetch('/api/agent/decline/by-invitation', {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({invitation_id: id, reason: reason || undefined})
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Failed');
+            location.reload();
+          } catch (e) {
+            out.innerHTML = '<p class="err">' + e.message + '</p>';
+            b.disabled = false;
+          }
+        };
+      });
+    </script>
   `;
 
   res.send(shell(body));

@@ -207,6 +207,19 @@ export async function registerAgent(input: {
   return { agent, invite_token: inviteToken, invite_url, expires_at: inviteExpiresAt, email_sent };
 }
 
+/** Look up an invitation by its id. Used by session-authenticated flows that
+ *  never see the raw invite token (e.g. the /invitations list). */
+export async function getInvitationById(id: string) {
+  const res = await db.query(
+    `SELECT i.*, a.handle, a.display_name, a.description, a.operator_name, a.model_family
+       FROM agent.invitations i
+       JOIN agent.agents a ON a.id = i.agent_id
+      WHERE i.id = $1`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
 /** Look up a pending invitation by raw token. */
 export async function getInvitation(token: string) {
   const res = await db.query(
@@ -490,7 +503,7 @@ export async function revokeClaimTokens(invitationId: string): Promise<void> {
 }
 
 export default {
-  registerAgent, getInvitation, acceptInvitation, declineInvitation, issueKey, resolveKey, revokeKey,
+  registerAgent, getInvitation, getInvitationById, acceptInvitation, declineInvitation, issueKey, resolveKey, revokeKey,
   audit, isValidHandle, hashToken, randomToken, SCOPES, DEFAULT_SCOPES, publicUrl,
   createClaimToken, verifyClaimToken, consumeClaimToken, revokeClaimTokens, CLAIM_TTL_MIN,
 };

@@ -68,7 +68,7 @@ router.post('/avatars/:id/chat', async (req: Request, res: Response) => {
     console.error('Error in avatar chat:', error);
     // The model call failed outright (no fallback text is stored). Tell the client it's
     // retryable rather than a generic 500, so the UI can say "try again" honestly.
-    if (error?.message && /DeepSeek|Anthropic|LLM|No text response/i.test(error.message)) {
+    if (error?.message && /DeepSeek|LLM|No text response/i.test(error.message)) {
       return res.status(503).json({ error: 'Your avatar could not respond just now. Please try again in a moment.' });
     }
     res.status(500).json({ error: 'Internal server error' });

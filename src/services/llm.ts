@@ -1,16 +1,17 @@
-// Single provider-agnostic entry point for every model call in MOJOMO.
+// Single entry point for every model call in MOJOMO.
 //
-// Historically each service (claude.ts, avatarChat.ts, matchmaking.ts, profileSynthesis.ts)
-// constructed its own Anthropic client. That made swapping providers a four-file edit and let
-// the four call sites drift apart. Everything now goes through complete() below.
+// DeepSeek is the only provider. It exposes an OpenAI-compatible
+// /chat/completions endpoint, so no SDK is needed - plain fetch.
 //
-// Provider is chosen by LLM_PROVIDER (default 'deepseek'). DeepSeek exposes an
-// OpenAI-compatible /chat/completions endpoint, so no extra SDK is needed - plain fetch.
+//   DEEPSEEK_API_KEY=...  DEEPSEEK_MODEL=deepseek-chat
 //
-//   LLM_PROVIDER=deepseek  DEEPSEEK_API_KEY=...  DEEPSEEK_MODEL=deepseek-chat
-//   LLM_PROVIDER=anthropic CLAUDE_API_KEY=...    CLAUDE_MODEL=claude-haiku-4-5-20251001
+// Anthropic was retired on 2026-10-21. The callAnthropic path, the
+// ALLOW_ANTHROPIC guard and the CLAUDE_* env vars were removed rather than
+// left dormant: a disabled fallback is one env edit away from spending money
+// on a provider we do not use. If a second provider is ever wanted, add it
+// here deliberately, with its own tests.
 
-export type LlmProvider = 'deepseek' | 'anthropic';
+export type LlmProvider = 'deepseek';
 
 export interface LlmRequest {
   system: string;
@@ -28,56 +29,22 @@ export interface LlmResponse {
   provider: LlmProvider;
 }
 
-/**
- * Anthropic is gated behind an explicit, deliberate opt-in.
- *
- * Setting LLM_PROVIDER=anthropic is not enough on its own: it also requires
- * ALLOW_ANTHROPIC=true. That way a stray env edit, a copied .env, or a future
- * refactor cannot silently start spending on Anthropic. If the guard is missing
- * we fall back to DeepSeek and log loudly rather than failing the request.
- */
-export function anthropicAllowed(): boolean {
-  return String(process.env.ALLOW_ANTHROPIC || '').toLowerCase() === 'true';
-}
-
 export function llmProvider(): LlmProvider {
-  const p = (process.env.LLM_PROVIDER || 'deepseek').toLowerCase();
-  if (p !== 'anthropic') return 'deepseek';
-  if (!anthropicAllowed()) {
-    console.error(
-      'REFUSED: LLM_PROVIDER=anthropic but ALLOW_ANTHROPIC is not true. ' +
-      'Falling back to DeepSeek. Set ALLOW_ANTHROPIC=true only with explicit permission.'
-    );
-    return 'deepseek';
-  }
-  return 'anthropic';
+  return 'deepseek';
 }
 
 export function llmModel(): string {
-  if (llmProvider() === 'anthropic') return process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
   return process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 }
 
-function requireKey(provider: LlmProvider): string {
-  const key = provider === 'anthropic' ? process.env.CLAUDE_API_KEY : process.env.DEEPSEEK_API_KEY;
-  if (!key) {
-    throw new Error(
-      provider === 'anthropic'
-        ? 'CLAUDE_API_KEY is not set (LLM_PROVIDER=anthropic)'
-        : 'DEEPSEEK_API_KEY is not set (LLM_PROVIDER=deepseek)'
-    );
-  }
+function requireKey(): string {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error('DEEPSEEK_API_KEY is not set');
   return key;
 }
 
 /** Per-million-token rates used for the cost column; override via env. */
 export function costRates(): { input: number; output: number } {
-  if (llmProvider() === 'anthropic') {
-    return {
-      input: Number(process.env.CLAUDE_COST_INPUT_PER_MTOK || 3),
-      output: Number(process.env.CLAUDE_COST_OUTPUT_PER_MTOK || 15),
-    };
-  }
   return {
     input: Number(process.env.DEEPSEEK_COST_INPUT_PER_MTOK || 0.28),
     output: Number(process.env.DEEPSEEK_COST_OUTPUT_PER_MTOK || 0.42),
@@ -92,7 +59,7 @@ export function estimateCost(inputTokens: number, outputTokens: number): number 
 const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60_000);
 
 async function callDeepSeek(req: LlmRequest): Promise<LlmResponse> {
-  const key = requireKey('deepseek');
+  const key = requireKey();
   const base = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
   const model = llmModel();
 
@@ -135,59 +102,13 @@ async function callDeepSeek(req: LlmRequest): Promise<LlmResponse> {
   }
 }
 
-async function callAnthropic(req: LlmRequest): Promise<LlmResponse> {
-  const key = requireKey('anthropic');
-  const model = llmModel();
-  const base = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, '');
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(`${base}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: req.maxTokens,
-        system: req.system,
-        messages: [{ role: 'user', content: req.user }],
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Anthropic ${res.status}: ${body.slice(0, 500)}`);
-    }
-
-    const data: any = await res.json();
-    const block = (data?.content || []).find((b: any) => b.type === 'text');
-    if (!block || typeof block.text !== 'string' || !block.text.trim()) throw new Error('No text response from Anthropic');
-
-    return {
-      text: block.text.trim(),
-      inputTokens: data?.usage?.input_tokens ?? 0,
-      outputTokens: data?.usage?.output_tokens ?? 0,
-      model,
-      provider: 'anthropic',
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** One model call. Retries transient failures with exponential backoff. */
 export async function complete(req: LlmRequest, maxAttempts = 3): Promise<LlmResponse> {
-  const provider = llmProvider();
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return provider === 'anthropic' ? await callAnthropic(req) : await callDeepSeek(req);
+      return await callDeepSeek(req);
     } catch (error) {
       lastError = error as Error;
       if (attempt < maxAttempts) {

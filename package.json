@@ -18,7 +18,6 @@
     "intel": "tsx src/scripts/intel.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.123.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "axios": "^1.6.0",
     "cors": "^2.8.5",

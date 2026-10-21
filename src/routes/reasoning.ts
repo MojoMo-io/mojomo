@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as db from '../services/db';
-import * as claudeService from '../services/claude';
+import * as reasoningService from '../services/reasoning';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
@@ -46,8 +46,8 @@ router.post('/conversations/:id/reasoning', async (req: Request, res: Response) 
       [id, reasoning_id, 'pending']
     );
 
-    const tokenEstimate = claudeService.estimateTokens(
-      claudeService.buildUserPrompt(
+    const tokenEstimate = reasoningService.estimateTokens(
+      reasoningService.buildUserPrompt(
         messages.rows.map((r: any) => ({
           avatar_id: r.avatar_id,
           content: r.message_content,

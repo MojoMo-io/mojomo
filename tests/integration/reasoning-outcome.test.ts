@@ -9,12 +9,12 @@ jest.mock('../../src/services/telegram', () => ({
   verifyTelegramChat: jest.fn().mockResolvedValue(false),
   sendTelegramNotification: jest.fn().mockResolvedValue(true),
 }));
-jest.mock('../../src/services/claude', () => {
-  const actual = jest.requireActual('../../src/services/claude');
-  return { ...actual, callClaudeReasoning: jest.fn() };
+jest.mock('../../src/services/reasoning', () => {
+  const actual = jest.requireActual('../../src/services/reasoning');
+  return { ...actual, callReasoning: jest.fn() };
 });
 
-import * as claude from '../../src/services/claude';
+import * as reasoning from '../../src/services/reasoning';
 import { processJob } from '../../src/services/job-queue';
 import { composeResponseText, resolveIdeaScore, IDEA_THRESHOLD } from '../../src/services/reasoning-outcome';
 import { extractIdeaFromMessage } from '../../src/services/ideas';
@@ -23,7 +23,7 @@ import messageRoutes from '../../src/routes/messages';
 import ideaRoutes from '../../src/routes/ideas';
 import reasoningRoutes from '../../src/routes/reasoning';
 
-const mockedClaude = claude.callClaudeReasoning as jest.Mock;
+const mockedReasoning = reasoning.callReasoning as jest.Mock;
 const HIGH = {
   themes: ['tokenomics'], insights: ['dilution keeps ownership at 100%'], quality_score: 8,
   next_steps: ['model 10 joins'], tensions: [],
@@ -61,7 +61,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.query('DELETE FROM mojomo.users WHERE id = $1', [userId]); // cascades avatars -> conversations -> messages/ideas/logs/queue
 });
-beforeEach(() => mockedClaude.mockReset());
+beforeEach(() => mockedReasoning.mockReset());
 
 describe('pure helpers', () => {
   test('composeResponseText leads with the IDEA: hypothesis', () => {
@@ -88,9 +88,9 @@ describe('processJob end-to-end (mocked Claude, real DB)', () => {
   test('high idea_score: stores ai_response, extracts idea, completes job', async () => {
     convId = await newConversation('RO high');
     const job = await enqueue(convId);
-    mockedClaude.mockResolvedValue({ response: HIGH, tokensUsed: 500, cost: 0.01 });
+    mockedReasoning.mockResolvedValue({ response: HIGH, tokensUsed: 500, cost: 0.01 });
     await processJob(job);
-    expect(mockedClaude).toHaveBeenCalledTimes(1);
+    expect(mockedReasoning).toHaveBeenCalledTimes(1);
 
     const log = (await db.query('SELECT status, tokens_used FROM mojomo.reasoning_logs WHERE id = $1', [job.reasoning_logs_id])).rows[0];
     expect(log.status).toBe('completed'); expect(log.tokens_used).toBe(500);
@@ -138,7 +138,7 @@ describe('processJob end-to-end (mocked Claude, real DB)', () => {
   test('low idea_score: stores ai_response but extracts nothing', async () => {
     const id = await newConversation('RO low');
     const job = await enqueue(id);
-    mockedClaude.mockResolvedValue({ response: LOW, tokensUsed: 100, cost: 0.001 });
+    mockedReasoning.mockResolvedValue({ response: LOW, tokensUsed: 100, cost: 0.001 });
     await processJob(job);
     const msgs = (await db.query("SELECT idea_score FROM mojomo.conversation_messages WHERE conversation_id = $1 AND message_type = 'ai_response'", [id])).rows;
     expect(msgs.length).toBe(1); expect(Number(msgs[0].idea_score)).toBeCloseTo(0.3, 2);
@@ -149,7 +149,7 @@ describe('processJob end-to-end (mocked Claude, real DB)', () => {
   test('Claude failure: log marked error, job returns to pending with one attempt, fails after max_attempts', async () => {
     const id = await newConversation('RO fail');
     let job = await enqueue(id);
-    mockedClaude.mockRejectedValue(new Error('simulated 529 overloaded'));
+    mockedReasoning.mockRejectedValue(new Error('simulated 529 overloaded'));
     await processJob(job);
     let q = (await db.query('SELECT status, attempts, max_attempts, error_message FROM mojomo.message_queue WHERE id = $1', [job.id])).rows[0];
     expect(q.attempts).toBe(1);
@@ -164,17 +164,17 @@ describe('processJob end-to-end (mocked Claude, real DB)', () => {
     q = (await db.query('SELECT status, attempts, max_attempts FROM mojomo.message_queue WHERE id = $1', [job.id])).rows[0];
     expect(q.attempts).toBe(q.max_attempts);
     expect(q.status).toBe('failed');
-    expect(mockedClaude).toHaveBeenCalledTimes(q.max_attempts);
+    expect(mockedReasoning).toHaveBeenCalledTimes(q.max_attempts);
     const n = (await db.query("SELECT count(*)::int AS n FROM mojomo.conversation_messages WHERE conversation_id = $1 AND message_type = 'ai_response'", [id])).rows[0].n;
     expect(n).toBe(0);
   });
 
   test('POST /reasoning does not process inline (queue owns processing)', async () => {
     const id = await newConversation('RO inline');
-    mockedClaude.mockResolvedValue({ response: HIGH, tokensUsed: 1, cost: 0 });
+    mockedReasoning.mockResolvedValue({ response: HIGH, tokensUsed: 1, cost: 0 });
     await enqueue(id);
     await new Promise((r) => setTimeout(r, 300));
-    expect(mockedClaude).not.toHaveBeenCalled();
+    expect(mockedReasoning).not.toHaveBeenCalled();
     const q = (await db.query('SELECT status FROM mojomo.message_queue WHERE conversation_id = $1', [id])).rows[0];
     expect(q.status).toBe('pending');
   });

@@ -1,5 +1,5 @@
 import * as db from './db';
-import * as claudeService from './claude';
+import * as reasoningService from './reasoning';
 import { storeReasoningOutcome } from './reasoning-outcome';
 import { generateAvatarReply, MAX_CONVERSATION_TURNS } from './avatarChat';
 import { synthesizePersonalityProfile } from './profileSynthesis';
@@ -132,7 +132,7 @@ async function processReasoningJob(job: QueueJob): Promise<void> {
     );
 
     // Call Claude
-    const result = await claudeService.callClaudeReasoning({
+    const result = await reasoningService.callReasoning({
       conversation_id: job.conversation_id as string,
       messages: messages.rows.map((r: any) => ({
         avatar_id: r.avatar_id,

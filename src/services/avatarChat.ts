@@ -63,7 +63,7 @@ export interface AssistantReplyResult {
 }
 
 /**
- * Tolerant extraction of a fenced/inline JSON action block, same style as claude.ts's
+ * Tolerant extraction of a fenced/inline JSON action block, same style as reasoning.ts's
  * parseReasoningJson: models often don't perfectly isolate the block, so find the last
  * top-level {...} that parses and contains an "action" key, and strip it from the visible reply.
  */

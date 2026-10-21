@@ -2,11 +2,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import * as db from '../../src/services/db';
 jest.mock('../../src/services/telegram', () => ({ verifyTelegramChat: jest.fn().mockResolvedValue(false), sendTelegramNotification: jest.fn().mockResolvedValue(true) }));
-jest.mock('../../src/services/claude', () => ({ ...jest.requireActual('../../src/services/claude'), callClaudeReasoning: jest.fn() }));
-import * as claude from '../../src/services/claude';
+jest.mock('../../src/services/reasoning', () => ({ ...jest.requireActual('../../src/services/reasoning'), callReasoning: jest.fn() }));
+import * as reasoning from '../../src/services/reasoning';
 import { startJobQueue, stopJobQueue, queueMessageForProcessing } from '../../src/services/job-queue';
 
-const mocked = claude.callClaudeReasoning as jest.Mock;
+const mocked = reasoning.callReasoning as jest.Mock;
 const userId = uuidv4(), a1 = uuidv4(), a2 = uuidv4();
 let convId: string;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -2,7 +2,7 @@
 // Implements spec Sprint 5.1 / Phase 2: "after AI response stored with idea_score > 0.65,
 // call extractIdeaFromMessage; extraction failure must not fail the message".
 import * as db from './db';
-import { ReasoningResponse } from './claude';
+import { ReasoningResponse } from './reasoning';
 import { calculateIdeaScore } from './messages';
 import { extractIdeaFromMessage } from './ideas';
 

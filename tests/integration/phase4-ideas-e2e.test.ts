@@ -6,8 +6,8 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as db from '../../src/services/db';
 jest.mock('../../src/services/telegram', () => ({ verifyTelegramChat: jest.fn().mockResolvedValue(false), sendTelegramNotification: jest.fn().mockResolvedValue(true) }));
-jest.mock('../../src/services/claude', () => ({ ...jest.requireActual('../../src/services/claude'), callClaudeReasoning: jest.fn() }));
-import * as claude from '../../src/services/claude';
+jest.mock('../../src/services/reasoning', () => ({ ...jest.requireActual('../../src/services/reasoning'), callReasoning: jest.fn() }));
+import * as reasoning from '../../src/services/reasoning';
 import { processJob } from '../../src/services/job-queue';
 import { canTransition, MATURITY_GATES } from '../../src/services/ideas';
 import avatarRoutes from '../../src/routes/avatars';
@@ -19,7 +19,7 @@ import payoutRoutes from '../../src/routes/payouts';
 import specialistRoutes from '../../src/routes/specialists';
 import conversationEndRoutes from '../../src/routes/conversation-end';
 
-const mocked = claude.callClaudeReasoning as jest.Mock;
+const mocked = reasoning.callReasoning as jest.Mock;
 const Z = '00000000-0000-0000-0000-000000000000';
 let app: express.Application;
 const ws1 = uuidv4(), ws2 = uuidv4();          // two workspaces (x-user-id), no signup flow

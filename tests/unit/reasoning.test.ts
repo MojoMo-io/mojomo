@@ -1,10 +1,10 @@
-// Exercises callClaudeReasoning's real control flow with the LLM transport (src/services/llm) mocked.
+// Exercises callReasoning's real control flow with the LLM transport (src/services/llm) mocked.
 const complete = jest.fn();
 jest.mock('../../src/services/llm', () => ({
   ...jest.requireActual('../../src/services/llm'),
   complete: (...args: any[]) => complete(...args),
 }));
-import { callClaudeReasoning, buildSystemPrompt, buildUserPrompt, estimateTokens } from '../../src/services/claude';
+import { callReasoning, buildSystemPrompt, buildUserPrompt, estimateTokens } from '../../src/services/reasoning';
 
 const body = { themes: ['t'], insights: ['i'], quality_score: 7, next_steps: [], tensions: [], idea_score: 0.7, idea_hypothesis: 'IDEA: x' };
 const llmReply = (text: string, inTok = 100, outTok = 50) => ({ text, inputTokens: inTok, outputTokens: outTok, model: 'deepseek-chat', provider: 'deepseek' as const });
@@ -23,7 +23,7 @@ test('parses fenced JSON and computes cost from configurable rates', async () =>
   process.env.LLM_PROVIDER = 'deepseek';
   process.env.DEEPSEEK_COST_INPUT_PER_MTOK = '2'; process.env.DEEPSEEK_COST_OUTPUT_PER_MTOK = '10';
   complete.mockResolvedValue(llmReply('```json\n' + JSON.stringify(body) + '\n```', 1_000_000, 100_000));
-  const r = await callClaudeReasoning(req);
+  const r = await callReasoning(req);
   expect(r.response.idea_score).toBe(0.7);
   expect(r.tokensUsed).toBe(1_100_000);
   expect(r.cost).toBeCloseTo(2 + 1, 6);
@@ -34,7 +34,7 @@ test('parses fenced JSON and computes cost from configurable rates', async () =>
 test('retries with backoff after a transient failure and then succeeds', async () => {
   complete.mockRejectedValueOnce(Object.assign(new Error('overloaded'), { status: 529 }))
           .mockResolvedValueOnce(llmReply(JSON.stringify(body)));
-  const p = callClaudeReasoning(req, 3);
+  const p = callReasoning(req, 3);
   await jest.advanceTimersByTimeAsync(1100);
   const r = await p;
   expect(complete).toHaveBeenCalledTimes(2);
@@ -43,7 +43,7 @@ test('retries with backoff after a transient failure and then succeeds', async (
 
 test('unparseable output is retried and the last error is thrown after maxAttempts', async () => {
   complete.mockResolvedValue(llmReply('sorry, no json here'));
-  const p = callClaudeReasoning(req, 2).catch((e) => e);
+  const p = callReasoning(req, 2).catch((e) => e);
   await jest.advanceTimersByTimeAsync(1100);
   const err = await p;
   expect(err).toBeInstanceOf(Error);
@@ -53,5 +53,5 @@ test('unparseable output is retried and the last error is thrown after maxAttemp
 
 test('empty model output is an error', async () => {
   complete.mockResolvedValue(llmReply(''));
-  await expect(callClaudeReasoning(req, 1)).rejects.toThrow('No JSON object');
+  await expect(callReasoning(req, 1)).rejects.toThrow('No JSON object');
 });

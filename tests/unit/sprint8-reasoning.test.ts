@@ -1,16 +1,16 @@
-import * as claudeService from '../../src/services/claude';
+import * as reasoningService from '../../src/services/reasoning';
 
 describe('Sprint 8: Claude Reasoning Service', () => {
   describe('buildSystemPrompt', () => {
     test('returns non-empty string', () => {
-      const prompt = claudeService.buildSystemPrompt();
+      const prompt = reasoningService.buildSystemPrompt();
       expect(prompt).toBeDefined();
       expect(prompt.length).toBeGreaterThan(0);
       expect(prompt).toContain('conversation');
     });
 
     test('includes analysis instructions', () => {
-      const prompt = claudeService.buildSystemPrompt();
+      const prompt = reasoningService.buildSystemPrompt();
       expect(prompt).toContain('themes');
       expect(prompt).toContain('insights');
       expect(prompt).toContain('JSON');
@@ -32,7 +32,7 @@ describe('Sprint 8: Claude Reasoning Service', () => {
         },
       ];
 
-      const prompt = claudeService.buildUserPrompt(messages);
+      const prompt = reasoningService.buildUserPrompt(messages);
       expect(prompt).toContain('avatar-1');
       expect(prompt).toContain('Hello');
       expect(prompt).toContain('avatar-2');
@@ -49,7 +49,7 @@ describe('Sprint 8: Claude Reasoning Service', () => {
       ];
       const customPrompt = 'Focus on disagreements';
 
-      const prompt = claudeService.buildUserPrompt(messages, customPrompt);
+      const prompt = reasoningService.buildUserPrompt(messages, customPrompt);
       expect(prompt).toContain(customPrompt);
       expect(prompt).toContain('avatar-1');
     });
@@ -63,7 +63,7 @@ describe('Sprint 8: Claude Reasoning Service', () => {
           created_at: new Date(),
         }));
 
-      const prompt = claudeService.buildUserPrompt(messages);
+      const prompt = reasoningService.buildUserPrompt(messages);
 
       // Should contain last messages
       expect(prompt).toContain('avatar-19');
@@ -71,7 +71,7 @@ describe('Sprint 8: Claude Reasoning Service', () => {
     });
 
     test('handles empty messages', () => {
-      const prompt = claudeService.buildUserPrompt([]);
+      const prompt = reasoningService.buildUserPrompt([]);
       expect(prompt).toBeDefined();
       expect(prompt.length).toBeGreaterThan(0);
     });
@@ -79,28 +79,28 @@ describe('Sprint 8: Claude Reasoning Service', () => {
 
   describe('estimateTokens', () => {
     test('returns positive number', () => {
-      const tokens = claudeService.estimateTokens('Hello world');
+      const tokens = reasoningService.estimateTokens('Hello world');
       expect(tokens).toBeGreaterThan(0);
       expect(Number.isInteger(tokens)).toBe(true);
     });
 
     test('scales with text length', () => {
-      const shortTokens = claudeService.estimateTokens('Hi');
-      const longTokens = claudeService.estimateTokens(
+      const shortTokens = reasoningService.estimateTokens('Hi');
+      const longTokens = reasoningService.estimateTokens(
         'This is a much longer message with many words and characters'
       );
       expect(longTokens).toBeGreaterThan(shortTokens);
     });
 
     test('handles empty string', () => {
-      const tokens = claudeService.estimateTokens('');
+      const tokens = reasoningService.estimateTokens('');
       expect(tokens).toBe(0);
     });
   });
 
   describe('Response validation', () => {
     test('validates required fields in ReasoningResponse', () => {
-      const validResponse: claudeService.ReasoningResponse = {
+      const validResponse: reasoningService.ReasoningResponse = {
         themes: ['theme1'],
         insights: ['insight1'],
         quality_score: 7,
@@ -124,7 +124,7 @@ describe('Sprint 8: Claude Reasoning Service', () => {
     });
 
     test('themes and insights should be arrays', () => {
-      const response: claudeService.ReasoningResponse = {
+      const response: reasoningService.ReasoningResponse = {
         themes: ['a', 'b'],
         insights: ['x'],
         quality_score: 5,
@@ -141,7 +141,7 @@ describe('Sprint 8: Claude Reasoning Service', () => {
 });
 
 describe('parseReasoningJson (fence-tolerant)', () => {
-  const { parseReasoningJson } = require('../../src/services/claude');
+  const { parseReasoningJson } = require('../../src/services/reasoning');
   const body = '{"themes":["a"],"insights":["b"],"quality_score":7,"next_steps":[],"tensions":[]}';
   test('parses bare JSON', () => {
     expect(parseReasoningJson(body).quality_score).toBe(7);

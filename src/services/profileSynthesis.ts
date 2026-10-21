@@ -1,5 +1,5 @@
 // Builds/refreshes an avatar's personality_profile from its private chat history with its human.
-// Same tolerant-JSON-parsing approach as claude.ts's parseReasoningJson.
+// Same tolerant-JSON-parsing approach as reasoning.ts's parseReasoningJson.
 import * as db from './db';
 import { complete } from './llm';
 import { decrypt } from './crypto';

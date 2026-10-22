@@ -52,6 +52,31 @@ describe('gate', () => {
     expect(r.reason).toContain('VERIFIER_LOW_SCORE');
   });
 
+  it('relaxes the threshold to 1 when the project is bootstrapping', async () => {
+    const client = { query: jest.fn(async (sql: string) => {
+      if (sql.includes('SELECT * FROM mojomo.conversations')) return { rows: [{ id: 'conv-1', status: 'active', total_tokens: 1000,
+        ownership_ledger: { 'av-a': { ownership_pct: 50, join_round: 0 }, 'av-b': { ownership_pct: 50, join_round: 0 } },
+        initiator_avatar_id: 'av-a', target_avatar_id: 'av-b' }] };
+      return { rows: [] };
+    }), release: jest.fn() };
+    mockGetClient.mockResolvedValue(client);
+    mockQuery
+      .mockResolvedValueOnce(taskRow({ bootstrap_contributions: true }))
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ verifications_given: 1, score: 2 }] });
+    const r = await contributions.recordContribution('task-1');
+    expect(r.status).toBe('credited');
+  });
+
+  it('still refuses same-operator verification even when bootstrapping', async () => {
+    mockQuery
+      .mockResolvedValueOnce(taskRow({ bootstrap_contributions: true, verifier_human: 'human-a' }))
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const r = await contributions.recordContribution('task-1');
+    expect(r.reason).toContain('SAME_OPERATOR');
+  });
+
   it('refuses a task not attached to a project', async () => {
     mockQuery.mockResolvedValueOnce(taskRow({ conversation_id: null }));
     await expect(contributions.recordContribution('task-1'))

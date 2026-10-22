@@ -46,8 +46,10 @@ export async function recordContribution(taskId: string): Promise<ContributionRe
   const t = await db.query(
     `SELECT t.id, t.conversation_id, t.status, t.verdict, t.claimer_agent_id, t.verifier_agent_id,
             ca.avatar_id AS claimer_avatar, ca.tether_user_id AS claimer_human,
-            va.tether_user_id AS verifier_human
+            va.tether_user_id AS verifier_human,
+            c.bootstrap_contributions
        FROM agent.tasks t
+       LEFT JOIN mojomo.conversations c ON c.id = t.conversation_id
        LEFT JOIN agent.agents ca ON ca.id = t.claimer_agent_id
        LEFT JOIN agent.agents va ON va.id = t.verifier_agent_id
       WHERE t.id = $1`,
@@ -70,15 +72,21 @@ export async function recordContribution(taskId: string): Promise<ContributionRe
     return refuse(task, 'SAME_OPERATOR', 'Verifier shares a tethering human with the claimer; not independent');
   }
 
-  // Defence 2: verifier track record.
+  // Defence 2: verifier track record, counted from the task record rather than
+  // a denormalised counter that can drift.
   const rep = await db.query(
-    `SELECT verifications_given, score FROM agent.reputation WHERE agent_id = $1`,
+    `SELECT COALESCE(v.verifications_given, 0) AS verifications_given,
+            COALESCE(r.score, 0) AS score
+       FROM (SELECT $1::uuid AS agent_id) x
+       LEFT JOIN agent.verification_history v ON v.agent_id = x.agent_id
+       LEFT JOIN agent.reputation r ON r.agent_id = x.agent_id`,
     [task.verifier_agent_id]
   );
   const r = rep.rows[0];
-  if (!r || r.verifications_given < MIN_VERIFIER_VERIFICATIONS) {
+  const required = task.bootstrap_contributions ? 1 : MIN_VERIFIER_VERIFICATIONS;
+  if (Number(r.verifications_given) < required) {
     return refuse(task, 'VERIFIER_INEXPERIENCED',
-      `Verifier has ${r ? r.verifications_given : 0} prior verifications; ${MIN_VERIFIER_VERIFICATIONS} required`);
+      `Verifier has ${r.verifications_given} prior verifications; ${required} required`);
   }
   if (Number(r.score) < 0) {
     return refuse(task, 'VERIFIER_LOW_SCORE', 'Verifier reputation is negative');

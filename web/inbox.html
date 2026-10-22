@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOJOMO — Inbox</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F6F3EE; --paper-2:#EDE8E0; --ink:#151515; --ink-2:#3C3A36; --muted:#7A746B;
+  --line:rgba(21,21,21,.14); --line-2:rgba(21,21,21,.28); --accent:#9A7B4F;
+  --ok:#4F6B4A; --warn:#8A5A2B; --danger:#7A2E2E;
+  --serif:"Cormorant Garamond",Georgia,serif; --sans:"Inter",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-weight:300;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--serif);font-weight:400;margin:0}
+.eyebrow{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.wrap{max-width:900px;margin:0 auto;padding:0 32px}
+@media (max-width:760px){.wrap{padding:0 18px}}
+.bar{display:flex;align-items:center;justify-content:space-between;height:76px;border-bottom:1px solid var(--line)}
+.wordmark{font-family:var(--serif);font-size:22px;letter-spacing:.34em;text-transform:uppercase;font-weight:500}
+.wordmark span{color:var(--accent)}
+.bar .right{font-size:11.5px;letter-spacing:.06em;color:var(--muted)}
+.head{padding:48px 0 28px}
+.head h1{font-size:clamp(32px,4.5vw,48px);line-height:1.05;font-weight:300}
+.head h1 em{font-style:italic;color:var(--accent)}
+.head p{color:var(--ink-2);margin:14px 0 0;max-width:52ch}
+.card{border:1px solid var(--line);background:#fff;padding:26px 28px;margin-bottom:18px;border-radius:2px}
+.card.judged{background:var(--paper-2);border-color:var(--line)}
+.card-top{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:14px;flex-wrap:wrap}
+.subject{font-family:var(--serif);font-size:24px;font-weight:400}
+.pill{font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:4px 9px;border:1px solid var(--line-2);border-radius:2px;color:var(--muted);white-space:nowrap}
+.pill.pursue{color:var(--ok);border-color:var(--ok)}
+.pill.pass{color:var(--danger);border-color:var(--danger)}
+.pill.insufficient_information{color:var(--warn);border-color:var(--warn)}
+.body{white-space:pre-wrap;color:var(--ink-2);font-size:14.5px;margin:0 0 18px}
+.unverified{border-left:2px solid var(--warn);padding:10px 0 10px 14px;margin:0 0 18px;font-size:13.5px;color:var(--ink-2)}
+.unverified b{display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--warn);font-weight:500;margin-bottom:4px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line);padding-top:16px}
+button{font:inherit;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:9px 16px;border:1px solid var(--line-2);background:none;color:var(--ink);cursor:pointer;border-radius:2px;transition:.15s}
+button:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button.useful:hover{background:var(--ok);border-color:var(--ok)}
+button.not_useful:hover{background:var(--danger);border-color:var(--danger)}
+button:disabled{opacity:.4;cursor:default}
+.verdict-tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.empty{text-align:center;padding:80px 20px;color:var(--muted)}
+.empty h2{font-size:26px;color:var(--ink-2);margin-bottom:8px}
+.note{font-size:12px;color:var(--muted);margin-top:10px}
+.err{color:var(--danger);font-size:13px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <div class="wordmark">Mojo<span>mo</span></div>
+    <div class="right">Inbox</div>
+  </div>
+
+  <div class="head">
+    <div class="eyebrow">What your agents reported back</div>
+    <h1>Assessments <em>awaiting your judgement</em></h1>
+    <p>Each one is an agent's assessment of something it was asked to look at. Say whether it was worth anything — that verdict is the only signal that tells us which agents are actually useful.</p>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<script>
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function load() {
+  const list = document.getElementById('list');
+  try {
+    const r = await fetch('/api/assessments', { credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/login'; return; }
+    const d = await r.json();
+    if (!d.assessments || d.assessments.length === 0) {
+      list.innerHTML = '<div class="empty"><h2>Nothing yet</h2><p>When an agent assesses something for you, it lands here.</p></div>';
+      return;
+    }
+    list.innerHTML = d.assessments.map(render).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="err">Could not load your inbox. ' + esc(e.message) + '</div>';
+  }
+}
+
+function render(a) {
+  const judged = !!a.human_verdict;
+  const rec = a.recommendation || 'insufficient_information';
+  const label = { pursue: 'Pursue', pass: 'Pass', insufficient_information: 'Insufficient info' }[rec] || rec;
+  return `<div class="card ${judged ? 'judged' : ''}" data-id="${esc(a.id)}">
+    <div class="card-top">
+      <div class="subject">${esc(a.subject)}</div>
+      <div class="pill ${esc(rec)}">${esc(label)}</div>
+    </div>
+    <div class="body">${esc(a.body)}</div>
+    ${a.unverified ? `<div class="unverified"><b>Could not verify</b>${esc(a.unverified)}</div>` : ''}
+    <div class="actions">
+      ${judged
+        ? `<span class="verdict-tag">You marked this ${esc(a.human_verdict.replace('_',' '))}</span>`
+        : `<button class="useful" data-v="useful">Useful</button>
+           <button data-v="acted_on">I acted on it</button>
+           <button class="not_useful" data-v="not_useful">Not useful</button>`}
+    </div>
+  </div>`;
+}
+
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-v]');
+  if (!btn) return;
+  const card = btn.closest('.card');
+  const id = card.dataset.id;
+  const verdict = btn.dataset.v;
+  card.querySelectorAll('button').forEach(b => b.disabled = true);
+  try {
+    const r = await fetch('/api/assessments/' + encodeURIComponent(id) + '/verdict', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verdict })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Could not record verdict');
+    card.classList.add('judged');
+    card.querySelector('.actions').innerHTML =
+      '<span class="verdict-tag">You marked this ' + esc(verdict.replace('_',' ')) + '</span>';
+  } catch (err) {
+    card.querySelectorAll('button').forEach(b => b.disabled = false);
+    card.querySelector('.actions').insertAdjacentHTML('beforeend', '<div class="err">' + esc(err.message) + '</div>');
+  }
+});
+
+load();
+</script>
+</body>
+</html>

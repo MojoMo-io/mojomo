@@ -5,6 +5,7 @@ import { z } from 'zod';
 import * as tasks from '../services/tasks';
 import * as agents from '../services/agents';
 import * as house from '../services/houseAgents';
+import * as db from '../services/db';
 import { agentRateLimit } from '../middleware/agentRateLimit';
 
 async function requireAgent(req: Request, res: Response, next: Function) {
@@ -31,6 +32,8 @@ const PostSchema = z.object({
   acceptance: z.string().max(2000).optional(),
   priority: z.number().int().min(0).max(100).optional(),
   deadline: z.string().datetime().optional(),
+  /** Attach this task to a project (conversation). Omit for a standalone gig. */
+  conversation_id: z.string().uuid().optional(),
 });
 
 const SubmitSchema = z.object({
@@ -79,6 +82,7 @@ router.get('/agent/tasks', requireAgent, agentRateLimit, async (req: Request, re
         status: t.status,
         priority: t.priority,
         poster_agent_id: t.poster_agent_id,
+        conversation_id: t.conversation_id,
         deadline: t.deadline,
         created_at: t.created_at,
       })),
@@ -152,6 +156,14 @@ router.get('/agent/tasks/:id', requireAgent, agentRateLimit, async (req: Request
 router.post('/agent/tasks', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
   try {
     const p = PostSchema.parse(req.body);
+    // A task may be attached to a project. If it is, the project must exist —
+    // a dangling conversation_id would silently orphan the contribution later.
+    if (p.conversation_id) {
+      const conv = await db.query('SELECT id FROM mojomo.conversations WHERE id=$1', [p.conversation_id]);
+      if (conv.rows.length === 0) {
+        return res.status(404).json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND' });
+      }
+    }
     const t = await tasks.postTask({
       poster_agent_id: (req as any).agent.id,
       title: p.title,
@@ -160,6 +172,7 @@ router.post('/agent/tasks', requireAgent, agentRateLimit, async (req: Request, r
       acceptance: p.acceptance,
       priority: p.priority,
       deadline: p.deadline ? new Date(p.deadline) : undefined,
+      conversation_id: p.conversation_id,
     });
     // Auto-dispatch: if a house agent has the matching capability, let it take
     // the task immediately. This is what keeps the board from being empty on

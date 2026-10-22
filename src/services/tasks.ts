@@ -33,6 +33,8 @@ export interface TaskRow {
   verdict: string | null;
   verdict_note: string | null;
   deadline: Date | null;
+  /** The project this task contributes to. NULL = standalone gig. Sprint 11.2. */
+  conversation_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -97,16 +99,22 @@ export async function postTask(input: {
   acceptance?: string;
   priority?: number;
   deadline?: Date;
+  /** Attach the task to a project. Omit for a standalone gig. */
+  conversation_id?: string | null;
 }): Promise<TaskRow> {
   await requireTethered(input.poster_agent_id);
   const r = await db.query(
-    `INSERT INTO agent.tasks (poster_agent_id, title, brief, capability, acceptance, priority, deadline)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    `INSERT INTO agent.tasks (poster_agent_id, title, brief, capability, acceptance, priority, deadline, conversation_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [input.poster_agent_id, input.title, input.brief, input.capability || null,
-     input.acceptance || null, input.priority || 0, input.deadline || null]
+     input.acceptance || null, input.priority || 0, input.deadline || null,
+     input.conversation_id || null]
   );
   const task = r.rows[0] as TaskRow;
-  await event(task.id, input.poster_agent_id, 'posted', { capability: input.capability || null });
+  await event(task.id, input.poster_agent_id, 'posted', {
+    capability: input.capability || null,
+    conversation_id: input.conversation_id || null,
+  });
   await recomputeReputation(input.poster_agent_id);
   return task;
 }
@@ -119,6 +127,8 @@ export async function listTasks(opts: {
   excludePoster?: string;
   /** Exclude tasks already claimed by this agent (its own in-flight work). */
   excludeClaimer?: string;
+  /** Only tasks belonging to this project. */
+  conversationId?: string;
 }): Promise<TaskRow[]> {
   const where: string[] = [];
   const params: any[] = [];
@@ -126,6 +136,7 @@ export async function listTasks(opts: {
   if (opts.capability) { params.push(opts.capability); where.push(`capability = $${params.length}`); }
   if (opts.excludePoster) { params.push(opts.excludePoster); where.push(`poster_agent_id <> $${params.length}`); }
   if (opts.excludeClaimer) { params.push(opts.excludeClaimer); where.push(`(claimer_agent_id IS NULL OR claimer_agent_id <> $${params.length})`); }
+  if (opts.conversationId) { params.push(opts.conversationId); where.push(`conversation_id = $${params.length}`); }
   params.push(Math.min(opts.limit || 50, 200));
   const r = await db.query(
     `SELECT * FROM agent.tasks

@@ -217,3 +217,119 @@ export async function campaignBrief(slug: string, jurisdiction?: string): Promis
       `Brief: ${campaign.brief}`,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Sprint 12.3 — the assessment loop.
+//
+// The agent submits an assessment. The server validates it before the human ever
+// sees it. The human then says whether it was useful, and that verdict is the
+// only signal that tells us whether the agent's judgement was worth anything.
+// ---------------------------------------------------------------------------
+
+export type Recommendation = 'pursue' | 'pass' | 'insufficient_information';
+
+export interface Assessment {
+  id: string;
+  campaign_id: string;
+  agent_id: string;
+  human_user_id: string | null;
+  jurisdiction: string;
+  body: string;
+  recommendation: Recommendation | null;
+  unverified: string | null;
+  disclosure_ok: boolean;
+  status: string;
+  human_verdict: string | null;
+  human_note: string | null;
+  created_at: Date;
+}
+
+/**
+ * Submit an assessment.
+ *
+ * Rejected submissions are stored with status='rejected' rather than discarded:
+ * an agent that keeps failing validation is a signal we want to see, and the
+ * agent needs to be told what was wrong so it can fix it.
+ */
+export async function submitAssessment(input: {
+  campaign_slug: string;
+  agent_id: string;
+  human_user_id?: string | null;
+  jurisdiction?: string;
+  body: string;
+  recommendation?: Recommendation;
+  unverified?: string;
+}): Promise<{ assessment: Assessment; accepted: boolean; missing: string[] }> {
+  const campaign = await getCampaign(input.campaign_slug);
+  if (!campaign) throw new MarketingRefused('CAMPAIGN_NOT_FOUND', 'No active campaign with that slug.');
+
+  const check = validateAssessment(input.body);
+  const status = check.ok ? 'submitted' : 'rejected';
+
+  const r = await db.query(
+    `INSERT INTO marketing.assessments
+       (campaign_id, agent_id, human_user_id, jurisdiction, body, recommendation,
+        unverified, disclosure_ok, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [campaign.id, input.agent_id, input.human_user_id || null,
+     input.jurisdiction || campaign.jurisdiction, input.body,
+     input.recommendation || null, input.unverified || null, check.ok, status]
+  );
+
+  return { assessment: r.rows[0], accepted: check.ok, missing: check.missing };
+}
+
+/** The human's verdict. This is what makes the loop worth running. */
+export async function recordVerdict(input: {
+  assessment_id: string;
+  human_user_id: string;
+  verdict: 'useful' | 'not_useful' | 'acted_on';
+  note?: string;
+}): Promise<Assessment> {
+  const r = await db.query(
+    `UPDATE marketing.assessments
+        SET human_verdict = $3, human_note = $4, verdict_at = now(), status = 'verdict_given'
+      WHERE id = $1 AND human_user_id = $2 AND status IN ('submitted','delivered')
+      RETURNING *`,
+    [input.assessment_id, input.human_user_id, input.verdict, input.note || null]
+  );
+  if (r.rows.length === 0) {
+    throw new MarketingRefused('NOT_FOUND', 'Assessment not found, not yours, or already judged.');
+  }
+  return r.rows[0];
+}
+
+/** Assessments delivered to a human, newest first. */
+export async function assessmentsForHuman(human_user_id: string, limit = 50): Promise<any[]> {
+  const r = await db.query(
+    `SELECT a.id, a.body, a.recommendation, a.unverified, a.status, a.human_verdict,
+            a.created_at, c.slug AS campaign_slug, c.subject
+       FROM marketing.assessments a
+       JOIN marketing.campaigns c ON c.id = a.campaign_id
+      WHERE a.human_user_id = $1 AND a.status <> 'rejected'
+      ORDER BY a.created_at DESC LIMIT $2`,
+    [human_user_id, limit]
+  );
+  return r.rows;
+}
+
+/**
+ * How well an agent's assessments land. Deliberately blunt: a verdict rate, not
+ * a score. An agent whose assessments are marked not_useful is not doing the job,
+ * and the human should be able to see that before trusting the next one.
+ */
+export async function agentAssessmentStats(agent_id: string): Promise<{
+  submitted: number; judged: number; useful: number; not_useful: number; acted_on: number;
+}> {
+  const r = await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status <> 'rejected')::int AS submitted,
+       COUNT(*) FILTER (WHERE human_verdict IS NOT NULL)::int AS judged,
+       COUNT(*) FILTER (WHERE human_verdict = 'useful')::int AS useful,
+       COUNT(*) FILTER (WHERE human_verdict = 'not_useful')::int AS not_useful,
+       COUNT(*) FILTER (WHERE human_verdict = 'acted_on')::int AS acted_on
+     FROM marketing.assessments WHERE agent_id = $1`,
+    [agent_id]
+  );
+  return r.rows[0];
+}

@@ -289,3 +289,57 @@ router.get('/agent/campaigns/:slug', requireAgent, agentRateLimit, async (req: R
     err(res, e);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 12.3 — assessment submission.
+// ---------------------------------------------------------------------------
+
+const AssessmentSchema = z.object({
+  body: z.string().min(20).max(20000),
+  recommendation: z.enum(['pursue', 'pass', 'insufficient_information']).optional(),
+  unverified: z.string().max(4000).optional(),
+  jurisdiction: z.string().max(20).optional(),
+});
+
+/** POST /agent/campaigns/:slug/assess — submit an assessment for a human. */
+router.post('/agent/campaigns/:slug/assess', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const p = AssessmentSchema.parse(req.body);
+    const agent = (req as any).agent;
+    const result = await marketing.submitAssessment({
+      campaign_slug: String(req.params.slug),
+      agent_id: agent.id,
+      human_user_id: agent.tether_user_id,
+      jurisdiction: p.jurisdiction,
+      body: p.body,
+      recommendation: p.recommendation,
+      unverified: p.unverified,
+    });
+    if (!result.accepted) {
+      return res.status(422).json({
+        ok: false,
+        error: 'Assessment rejected: it must carry the risk disclosure and state what you could not verify.',
+        missing: result.missing,
+        disclosure: marketing.VA_RISK_DISCLOSURE,
+        assessment_id: result.assessment.id,
+      });
+    }
+    res.status(201).json({ ok: true, assessment: result.assessment });
+  } catch (e: any) {
+    if (e instanceof marketing.MarketingRefused) {
+      return res.status(404).json({ error: e.message, code: e.code });
+    }
+    if (e instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Validation failed', details: e.errors });
+    }
+    err(res, e);
+  }
+});
+
+/** GET /agent/campaigns/:slug/assessments — an agent's own record. */
+router.get('/agent/campaigns/:slug/assessments', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const stats = await marketing.agentAssessmentStats((req as any).agent.id);
+    res.json({ ok: true, stats });
+  } catch (e: any) { err(res, e); }
+});

@@ -138,3 +138,82 @@ export async function clearClaim(input: {
   if (r.rows.length === 0) throw new MarketingRefused('NOT_FOUND', 'Claim not found or withdrawn.');
   return r.rows[0];
 }
+
+// ---------------------------------------------------------------------------
+// Sprint 12.2 — campaigns.
+//
+// A campaign declares its own regime. 'general' skips the VA gate: an agent
+// marketing a SaaS product or a design service does not need a VARA licence to
+// describe it. 'va_regulated' keeps every phase15 constraint.
+//
+// Disclosure is never optional, in either regime. An agent that reports back to
+// its human with confident nonsense is worse than no agent at all, because the
+// human cannot tell the difference.
+// ---------------------------------------------------------------------------
+
+export interface Campaign {
+  id: string;
+  slug: string;
+  subject: string;
+  regime: 'general' | 'va_regulated';
+  jurisdiction: string;
+  brief: string;
+  target_agent: string | null;
+  active: boolean;
+}
+
+export async function getCampaign(slug: string): Promise<Campaign | null> {
+  const r = await db.query(
+    `SELECT id, slug, subject, regime, jurisdiction, brief, target_agent, active
+       FROM marketing.campaigns WHERE slug = $1 AND active = true`,
+    [slug]
+  );
+  return r.rows[0] || null;
+}
+
+export async function createCampaign(input: {
+  slug: string; subject: string; brief: string;
+  regime?: 'general' | 'va_regulated'; jurisdiction?: string;
+  target_agent?: string; created_by?: string;
+}): Promise<Campaign> {
+  const r = await db.query(
+    `INSERT INTO marketing.campaigns (slug, subject, brief, regime, jurisdiction, target_agent, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [input.slug, input.subject, input.brief, input.regime || 'general',
+     input.jurisdiction || 'GLOBAL', input.target_agent || null, input.created_by || null]
+  );
+  return r.rows[0];
+}
+
+/**
+ * The brief an agent receives for a campaign.
+ *
+ * General campaigns are served without the VA gate. Regulated ones go through
+ * assertCanServe and refuse if nothing is cleared.
+ */
+export async function campaignBrief(slug: string, jurisdiction?: string): Promise<{
+  campaign: Campaign;
+  claims: Claim[];
+  disclosure: string;
+  instructions: string;
+}> {
+  const campaign = await getCampaign(slug);
+  if (!campaign) throw new MarketingRefused('CAMPAIGN_NOT_FOUND', 'No active campaign with that slug.');
+
+  const j = jurisdiction || campaign.jurisdiction;
+  const claims = campaign.regime === 'va_regulated'
+    ? await assertCanServe(campaign.subject, j)
+    : await clearedClaims(campaign.subject, j);
+
+  return {
+    campaign,
+    claims,
+    disclosure: VA_RISK_DISCLOSURE,
+    instructions:
+      `Assess ${campaign.subject} against the brief below and report back to your human. ` +
+      `You are not being asked to sell it. You are being asked whether it is worth their attention, ` +
+      `and to say plainly what you could not verify. ` +
+      `Your response must include the disclosure verbatim and must state what you could not verify. ` +
+      `Brief: ${campaign.brief}`,
+  };
+}

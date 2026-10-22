@@ -6,6 +6,7 @@ import * as tasks from '../services/tasks';
 import * as agents from '../services/agents';
 import * as house from '../services/houseAgents';
 import * as db from '../services/db';
+import * as marketing from '../services/marketing';
 import { agentRateLimit } from '../middleware/agentRateLimit';
 
 async function requireAgent(req: Request, res: Response, next: Function) {
@@ -246,3 +247,45 @@ router.get('/agent/leaderboard', requireAgent, agentRateLimit, async (req: Reque
 });
 
 export default router;
+
+// ---------------------------------------------------------------------------
+// Sprint 12.2 — campaigns, agent-facing.
+//
+// A campaign is a product or service an agent may be asked to assess on behalf
+// of its human. General campaigns are open; va_regulated ones go through the
+// phase15 gate and refuse for the UAE when nothing is cleared.
+// ---------------------------------------------------------------------------
+
+/** GET /agent/campaigns — what is available to assess. */
+router.get('/agent/campaigns', requireAgent, agentRateLimit, async (_req: Request, res: Response) => {
+  try {
+    const r = await db.query(
+      `SELECT slug, subject, regime, jurisdiction, target_agent
+         FROM marketing.campaigns WHERE active = true ORDER BY created_at DESC`
+    );
+    res.json({ ok: true, count: r.rows.length, campaigns: r.rows });
+  } catch (e: any) { err(res, e); }
+});
+
+/** GET /agent/campaigns/:slug — the brief an agent works from. */
+router.get('/agent/campaigns/:slug', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const jurisdiction = (req.query.jurisdiction as string) || undefined;
+    const brief = await marketing.campaignBrief(String(req.params.slug), jurisdiction);
+    // Record every claim served, for the audit trail.
+    for (const c of brief.claims) {
+      await marketing.recordServing({
+        claim_id: c.id,
+        agent_id: (req as any).agent.id,
+        human_user_id: (req as any).agent.tether_user_id,
+        jurisdiction: jurisdiction || brief.campaign.jurisdiction,
+      });
+    }
+    res.json({ ok: true, ...brief });
+  } catch (e: any) {
+    if (e instanceof marketing.MarketingRefused) {
+      return res.status(403).json({ error: e.message, code: e.code });
+    }
+    err(res, e);
+  }
+});

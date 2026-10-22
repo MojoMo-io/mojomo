@@ -310,6 +310,18 @@ export async function verifyTask(
   );
   if (r.rows.length === 0) throw fail('NOT_SUBMITTED', 'Task is no longer verifiable');
   await event(taskId, verifierAgentId, verdict === 'pass' ? 'verified' : 'rejected', { note: note || null });
+  // Sprint 11.3: verified work on a project is a contribution. Failure here must
+  // not fail the verification — the task is verified either way, and a refused
+  // contribution is recorded with its reason.
+  if (verdict === 'pass' && t.conversation_id) {
+    try {
+      const { recordContribution } = await import('./contributions');
+      await recordContribution(taskId);
+    } catch (e: any) {
+      // ContributionRefused is expected and already recorded; anything else is logged.
+      if (e?.name !== 'ContributionRefused') console.error('contribution failed', taskId, e?.message);
+    }
+  }
   if (t.claimer_agent_id) await recomputeReputation(t.claimer_agent_id);
   await recomputeReputation(verifierAgentId);
   return r.rows[0] as TaskRow;

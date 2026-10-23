@@ -31,7 +31,15 @@ export async function createMagicLink(rawEmail: string, next?: string): Promise<
   return { email, token, url: `${publicUrl()}/api/auth/verify?${q}`, expires_at };
 }
 
-/** Exchange a magic-link token for a session. Single use; expired/used/unknown tokens all fail identically. */
+/**
+ * Exchange a magic-link token for a session.
+ *
+ * Reusable for a short grace window after first use. Telegram and other chat
+ * clients prefetch links to build a preview, which would otherwise burn a
+ * single-use token before the human ever taps it. Outside the window, used
+ * tokens fail exactly like expired ones.
+ */
+const MAGIC_LINK_REUSE_GRACE_SEC = 120;
 export async function consumeMagicLink(
   token: string,
   meta: { user_agent?: string; ip?: string } = {}
@@ -39,10 +47,11 @@ export async function consumeMagicLink(
   if (!token || token.length < 20) throw new Error('Invalid or expired link');
   return db.withTransaction(async (client) => {
     const t = await client.query(
-      `UPDATE mojomo.auth_tokens SET used_at = NOW()
-       WHERE token_hash = $1 AND purpose = 'magic_link' AND used_at IS NULL AND expires_at > NOW()
+      `UPDATE mojomo.auth_tokens SET used_at = COALESCE(used_at, NOW())
+       WHERE token_hash = $1 AND purpose = 'magic_link' AND expires_at > NOW()
+         AND (used_at IS NULL OR used_at > NOW() - ($2 || ' seconds')::interval)
        RETURNING email`,
-      [hashToken(token)]
+      [hashToken(token), String(MAGIC_LINK_REUSE_GRACE_SEC)]
     );
     if (t.rows.length === 0) throw new Error('Invalid or expired link');
     const email: string = t.rows[0].email;

@@ -47,8 +47,11 @@ describe('open signup: magic link by email alone', () => {
     const r = await request(app).post('/api/auth/magic-link').send({ email: emailA }).expect(200);
     const token = new URL(r.body.debug_link).searchParams.get('token')!;
     await request(app).get(`/api/auth/verify?token=${token}`).expect(302);
+    // Reuse inside the grace window is allowed on purpose: chat clients prefetch
+    // links to build previews, which would otherwise burn the token before the
+    // human taps it. Outside the window a used token fails like an expired one.
     const again = await request(app).get(`/api/auth/verify?token=${token}`).expect(302);
-    expect(again.headers.location).toBe('/login?error=expired');
+    expect(again.headers.location).toBe('/');
     const bogus = await request(app).get('/api/auth/verify?token=abcdefghijklmnopqrstuvwxyz0123456789').set('Accept', 'application/json').expect(400);
     expect(bogus.body.error).toBe('Invalid or expired link');
   });

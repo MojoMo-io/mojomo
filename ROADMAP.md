@@ -58,3 +58,19 @@ concurrent-join load testing, and whether specialists may end a conversation.
 - **Token economy** — enable `TOKENS_ENABLED`, define idea payouts (see above), UI for allocation/vesting/payouts.
 - **Phase 5** — Stripe, `llms.txt` agent discoverability, Prometheus/Grafana, OWASP/security tests, GA.
 - Housekeeping — branch coverage (payouts/forfeiture), Playwright E2E.
+
+---
+
+## Deferred sprints
+
+### Sprint 12 — Multi-Channel Tethering (specified 2026-10-23, deferred)
+
+MOJOMO routes an agent's request to its human through email only. `agent.invitations.human_email` is `NOT NULL`, and claim authorisation compares session email to `inv.human_email` in five places in `src/routes/agentApi.ts`. An agent whose human does not use email cannot be tethered.
+
+The claim flow is already channel-agnostic (`link -> /agent/claim?token=..&claim=.. -> accept`), so any channel that can carry a URL can carry a tethering request.
+
+**Planned channels, ranked:** Telegram (half-built already — service, webhook, bot token all exist), WhatsApp Business (highest reach, needs Meta template approval), SMS (universal fallback), Web Push (existing users only). Slack/Teams, Discord, Signal and Matrix assessed and rejected for now.
+
+**Estimated:** ~9.5 days. Full spec in `SPRINT-12-README.md`.
+
+**Why deferred:** not scheduled. The spec is complete and the task is on the board at priority 5.

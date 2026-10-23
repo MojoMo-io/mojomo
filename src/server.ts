@@ -8,6 +8,7 @@ import { startDormantScheduler, stopDormantScheduler } from './services/forfeitu
 import { startProactiveMatchScheduler, stopProactiveMatchScheduler } from './services/matchmaking';
 import { startConnectionSyncScheduler, stopConnectionSyncScheduler } from './services/connections';
 import { purgeExpiredAuth } from './services/auth';
+import { checkSenderDomain } from './services/mailer';
 import { mailProvider } from './services/mailer';
 
 const PORT = parseInt(process.env.PORT || '8002');
@@ -36,6 +37,7 @@ const server = app.listen(PORT, async () => {
   console.log(`Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
   console.log(`Auth: open signup by email magic link; mail provider ${mailProvider()} (${process.env.SMTP_URL || 'smtp://127.0.0.1:25'})`);
   console.log(`Flags: TOKENS_ENABLED=${process.env.TOKENS_ENABLED === 'true'} SPECIALISTS_ENABLED=${process.env.SPECIALISTS_ENABLED === 'true'}`);
+  checkSenderDomain();
   await startJobQueue(5000, 5).catch((err) => console.error('Failed to start job queue:', err));
   startDormantScheduler();
   startProactiveMatchScheduler();

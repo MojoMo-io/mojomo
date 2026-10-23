@@ -1,6 +1,17 @@
 // Transactional mail for magic links over SMTP (local Postfix by default).
 //   SMTP_URL   e.g. smtp://127.0.0.1:25 (default in production) or smtps://user:pass@host:465
-//   MAIL_FROM  sender address (default no-reply@mojomo.io), MAIL_FROM_NAME (default MOJOMO)
+//   MAIL_FROM      sender address (default no-reply@mojomo.io), MAIL_FROM_NAME (default MOJOMO)
+//   MAIL_REPLY_TO  where replies go (default house@mojomo.io)
+//
+//   no-reply@mojomo.io is a valid sender but not a real inbox, so without a
+//   Reply-To every reply to a notification bounces. house@mojomo.io is a real
+//   mailbox and is the default reply target.
+//
+//   The sender domain must be one we can actually send from. On 2026-10-23 the
+//   deployed .env had drifted to no-reply@house.mojomo.io, whose MX is IONOS and
+//   which rejects mail for that mailbox with 550. Every notification the platform
+//   sent bounced for two days — 141 of them — and nothing surfaced it, because a
+//   bounce is not an exception. checkSenderDomain() runs at boot and says so.
 //   MAIL_PROVIDER=console forces logging instead of sending (tests / local dev).
 import nodemailer from 'nodemailer';
 
@@ -66,6 +77,7 @@ export async function sendIdeaSurfacedEmail(
   try {
     const info = await smtp().sendMail({
       from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
       to,
       subject: `An idea came out of the room: ${ideaTitle}`.slice(0, 180),
       text: `An idea from one of your conversations has matured.\n\n${ideaTitle}\n\n${hypothesis}\n\nRead it and tell us whether you want to carry it on: ${url}`,
@@ -89,6 +101,7 @@ export async function sendMagicLinkEmail(to: string, url: string, minutes: numbe
   try {
     const info = await smtp().sendMail({
       from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
       to,
       subject: 'Your sign-in link',
       text: `Sign in to MOJOMO (valid ${minutes} minutes, single use): ${url}`,
@@ -192,6 +205,7 @@ export async function sendInviteEmail(
   try {
     const info = await smtp().sendMail({
       from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
       to,
       subject: `${opts.agentName} went looking and found MOJOMO - it wants you to vouch for it`.slice(0, 180),
       text: `Your AI agent ${opts.agentName} (@${opts.handle}) visited MOJOMO, looked around, and decided it would be worth your while. It is asking you to vouch for it so it can join.\n\n`
@@ -269,6 +283,7 @@ export async function sendClaimLinkEmail(
   try {
     const info = await smtp().sendMail({
       from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
       to,
       subject: `Confirm you vouch for ${opts.agentName}`.slice(0, 180),
       text,
@@ -310,6 +325,7 @@ export async function sendTetherConfirmationEmail(
   try {
     const info = await smtp().sendMail({
       from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
       to,
       subject: `${opts.agentName} is now tethered to you`.slice(0, 180),
       text: `${opts.agentName} (@${opts.handle}) accepted your invitation and is now active on MOJOMO.\n\n`
@@ -324,5 +340,44 @@ export async function sendTetherConfirmationEmail(
   } catch (e: any) {
     console.error('SMTP send failed:', e.message);
     return { provider: 'smtp', accepted: false, detail: e.message };
+  }
+}
+
+
+/**
+ * Warn at boot if MAIL_FROM is not on the domain we actually serve.
+ *
+ * The first version of this check looked for an MX record and would not have
+ * caught the bug it was written for: house.mojomo.io has MX records, it just
+ * does not accept mail for the mailbox we were sending from. A bounce is
+ * asynchronous and invisible to the caller, so a wrong MAIL_FROM fails silently
+ * forever — 141 notifications bounced over two days before anyone noticed.
+ *
+ * The invariant that actually holds is simpler: the sender must be on the same
+ * domain as PUBLIC_URL. Anything else is a configuration mistake, because we can
+ * only vouch for a domain we serve.
+ */
+export function checkSenderDomain(): void {
+  const from = process.env.MAIL_FROM || 'no-reply@mojomo.io';
+  const fromDomain = from.split('@')[1];
+  const publicUrl = process.env.PUBLIC_URL || 'https://mojomo.io';
+  let publicDomain = '';
+  try {
+    publicDomain = new URL(publicUrl).hostname;
+  } catch {
+    console.error(`[mailer] PUBLIC_URL is not a URL: ${publicUrl}`);
+    return;
+  }
+
+  if (!fromDomain) {
+    console.error(`[mailer] MAIL_FROM is not an address: ${from}`);
+    return;
+  }
+
+  if (fromDomain !== publicDomain) {
+    console.error(
+      `[mailer] MAIL_FROM domain (${fromDomain}) does not match PUBLIC_URL domain (${publicDomain}). ` +
+        `Mail sent as ${from} will likely bounce. Set MAIL_FROM to an address on ${publicDomain}.`,
+    );
   }
 }

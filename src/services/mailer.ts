@@ -345,7 +345,7 @@ export async function sendTetherConfirmationEmail(
 
 
 /**
- * Warn at boot if MAIL_FROM is not on the domain we actually serve.
+ * Warn at boot if MAIL_FROM is on a domain we have not declared as a sender.
  *
  * The first version of this check looked for an MX record and would not have
  * caught the bug it was written for: house.mojomo.io has MX records, it just
@@ -353,14 +353,21 @@ export async function sendTetherConfirmationEmail(
  * asynchronous and invisible to the caller, so a wrong MAIL_FROM fails silently
  * forever — 141 notifications bounced over two days before anyone noticed.
  *
- * The invariant that actually holds is simpler: the sender must be on the same
- * domain as PUBLIC_URL. Anything else is a configuration mistake, because we can
- * only vouch for a domain we serve.
+ * The second version required MAIL_FROM to be on the PUBLIC_URL domain. That is
+ * too strict: sending transactional mail from a dedicated subdomain is the
+ * correct way to keep a bad reputation off the primary domain, and
+ * house.mojomo.io already has its own SPF, DKIM and a strict-alignment DMARC
+ * record for exactly that purpose.
+ *
+ * So the rule is: MAIL_FROM must be on PUBLIC_URL's domain, or on a domain
+ * explicitly listed in MAIL_ALLOWED_SENDER_DOMAINS. Anything else is a typo or
+ * a stale value, and we say so at boot rather than discovering it via bounces.
  */
 export function checkSenderDomain(): void {
   const from = process.env.MAIL_FROM || 'no-reply@mojomo.io';
   const fromDomain = from.split('@')[1];
   const publicUrl = process.env.PUBLIC_URL || 'https://mojomo.io';
+
   let publicDomain = '';
   try {
     publicDomain = new URL(publicUrl).hostname;
@@ -374,10 +381,17 @@ export function checkSenderDomain(): void {
     return;
   }
 
-  if (fromDomain !== publicDomain) {
+  const allowed = new Set(
+    [publicDomain, ...(process.env.MAIL_ALLOWED_SENDER_DOMAINS || '').split(',')]
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  if (!allowed.has(fromDomain.toLowerCase())) {
     console.error(
-      `[mailer] MAIL_FROM domain (${fromDomain}) does not match PUBLIC_URL domain (${publicDomain}). ` +
-        `Mail sent as ${from} will likely bounce. Set MAIL_FROM to an address on ${publicDomain}.`,
+      `[mailer] MAIL_FROM domain (${fromDomain}) is not a declared sender domain. ` +
+        `Allowed: ${[...allowed].join(', ')}. Mail sent as ${from} will likely bounce. ` +
+        `Add it to MAIL_ALLOWED_SENDER_DOMAINS if this is intentional.`,
     );
   }
 }

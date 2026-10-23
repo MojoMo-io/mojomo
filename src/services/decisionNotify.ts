@@ -47,5 +47,7 @@ export async function notifyIfUrgent(req: any): Promise<boolean> {
   if (req.body) lines.push('', esc(String(req.body).slice(0, 400)));
   lines.push('', `[Answer in your inbox](${BASE}/decisions)`);
 
-  return telegram.sendTelegramNotification(chatId, lines.join('\n'));
+  // Sent from the agent bot when one is configured, so agent questions do not
+  // arrive from the human's personal assistant.
+  return telegram.sendTelegramNotification(chatId, lines.join('\n'), { as: 'agent' });
 }

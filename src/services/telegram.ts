@@ -17,6 +17,17 @@ const telegramApi = axios.create({
 });
 
 /**
+ * A second bot, used for agent-originated messages so they do not arrive from
+ * the human's personal assistant. Falls back to the primary bot when unset.
+ */
+const AGENT_BOT_TOKEN = process.env.TELEGRAM_AGENT_BOT_TOKEN || '';
+
+function apiFor(token?: string) {
+  if (!token || token === BOT_TOKEN) return telegramApi;
+  return axios.create({ baseURL: `${TELEGRAM_API_URL}/bot${token}`, timeout: 5000 });
+}
+
+/**
  * Verify that the bot can send a message to a given chat ID
  * This ensures the chat_id is valid and the bot has access
  */
@@ -45,15 +56,17 @@ export async function verifyTelegramChat(chatId: string): Promise<boolean> {
  */
 export async function sendTelegramNotification(
   chatId: string,
-  message: string
+  message: string,
+  opts: { as?: 'primary' | 'agent' } = {}
 ): Promise<boolean> {
-  if (!BOT_TOKEN) {
+  const token = opts.as === 'agent' ? (AGENT_BOT_TOKEN || BOT_TOKEN) : BOT_TOKEN;
+  if (!token) {
     console.warn('Telegram bot token not configured, skipping notification');
     return false;
   }
 
   try {
-    const response = await telegramApi.post('/sendMessage', {
+    const response = await apiFor(token).post('/sendMessage', {
       chat_id: chatId,
       text: message,
       parse_mode: 'Markdown',

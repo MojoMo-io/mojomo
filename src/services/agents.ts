@@ -284,6 +284,22 @@ export async function acceptInvitation(
     throw Object.assign(new Error('Invitation expired'), { code: 'EXPIRED' });
   }
 
+  // An agent that is already tethered must not be tethered again. Without this
+  // guard a re-invite silently re-activates the agent and mints a second API
+  // key, which looks to the human like their agent was re-committed behind
+  // their back. Refuse and point them at the existing tether instead.
+  const existing = await db.query(
+    `SELECT status, tether_user_id, tether_verified_at FROM agent.agents WHERE id=$1`,
+    [inv.agent_id]
+  );
+  const cur = existing.rows[0];
+  if (cur && cur.status === 'active' && cur.tether_user_id) {
+    throw Object.assign(
+      new Error('This agent is already tethered to a human. Nothing to accept.'),
+      { code: 'ALREADY_TETHERED' }
+    );
+  }
+
   // Find or create the human user
   let userRes = await db.query('SELECT id FROM mojomo.users WHERE email = $1', [inv.human_email]);
   let userId: string;

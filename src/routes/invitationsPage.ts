@@ -50,6 +50,28 @@ const shell = (body: string) => `<!doctype html>
   .inv .desc{font-size:13.5px;color:var(--ink-2);max-width:46ch}
   .inv .meta{font-size:11.5px;color:var(--muted);margin-top:12px;letter-spacing:.04em}
   .pill{display:inline-block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:4px 11px;border-radius:999px;white-space:nowrap}
+  .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-bottom:8px}
+  .tcard{border:1px solid var(--line);background:var(--bone-2);padding:26px 28px}
+  .tcard-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px}
+  .tcard .name{font-family:var(--serif);font-size:23px;line-height:1.15}
+  .tcard .handle{font-size:11px;letter-spacing:.1em;color:var(--ochre);margin-top:3px}
+  .tcard .desc{font-size:13.5px;color:var(--ink-2);margin-bottom:12px}
+  .tcard .meta{font-size:11.5px;color:var(--muted);letter-spacing:.04em;margin-bottom:14px}
+  .tcard .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;border-top:1px solid var(--line);padding-top:14px}
+  .tcard .grid .k{display:block;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .tcard .grid .v{display:block;font-size:12.5px;color:var(--ink-2);word-break:break-all}
+  .tcard .caps{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .tcard .cap{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border:1px solid var(--line-2);color:var(--ink-2)}
+  .inv.dup{opacity:.72;border-style:dashed}
+  .note{font-size:12.5px;color:var(--rust);margin-top:10px;padding-left:12px;border-left:2px solid var(--rust)}
+  @media(max-width:640px){
+    .wrap{padding:0 20px}
+    .tgrid{grid-template-columns:1fr}
+    .tcard{padding:22px 20px}
+    .inv{flex-direction:column;gap:16px}
+    .inv>div:last-child{text-align:left!important}
+    .tcard .grid{grid-template-columns:1fr}
+  }
   .pill.pending{background:rgba(184,135,63,.16);color:#8A5A2B}
   .pill.accepted{background:rgba(94,127,118,.18);color:#3E5A52}
   .pill.declined{background:rgba(156,90,60,.14);color:#7A3E28}
@@ -114,7 +136,10 @@ router.get('/invitations', async (req: Request, res: Response) => {
 
   const rows = await db.query(
     `SELECT i.id, i.status, i.created_at, i.expires_at, i.declined_at, i.decline_reason,
-            a.handle, a.display_name, a.description, a.operator_name, a.model_family
+            a.id AS agent_id, a.handle, a.display_name, a.description, a.operator_name,
+            a.operator_url, a.model_family, a.framework, a.country, a.capabilities,
+            a.endpoint_url, a.status AS agent_status, a.tether_user_id,
+            a.tether_verified_at, a.last_seen_at, a.created_at AS agent_created_at
        FROM agent.invitations i
        JOIN agent.agents a ON a.id = i.agent_id
       WHERE i.human_email = $1
@@ -123,43 +148,130 @@ router.get('/invitations', async (req: Request, res: Response) => {
     [session.email.toLowerCase()]
   );
 
+  // The agents this human already vouches for. Shown above the invitations so a
+  // returning human sees what they are responsible for before they see what is
+  // asking for them.
+  const tethered = await db.query(
+    `SELECT a.id, a.handle, a.display_name, a.description, a.operator_name,
+            a.operator_url, a.model_family, a.framework, a.country, a.capabilities,
+            a.endpoint_url, a.status, a.tether_verified_at, a.last_seen_at,
+            a.created_at
+       FROM agent.agents a
+       JOIN mojomo.users u ON u.id = a.tether_user_id
+      WHERE u.email = $1
+      ORDER BY a.tether_verified_at DESC NULLS LAST`,
+    [session.email.toLowerCase()]
+  );
+
   const pending = rows.rows.filter((r: any) => r.status === 'pending' && new Date(r.expires_at) > new Date());
   const past = rows.rows.filter((r: any) => !(r.status === 'pending' && new Date(r.expires_at) > new Date()));
 
+  // A pending invitation for an agent this human already vouches for is not a
+  // new request — it is the same agent asking again. Flag it rather than
+  // offering an Accept button that would re-tether and mint a second key.
+  const tetheredIds = new Set(tethered.rows.map((t: any) => t.id));
+  const isDuplicate = (r: any) => tetheredIds.has(r.agent_id);
+
+  const fmtDate = (d: any) => d ? new Date(d).toISOString().slice(0, 10) : '—';
+  const rel = (d: any) => {
+    if (!d) return 'never';
+    const ms = Date.now() - new Date(d).getTime();
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    return Math.floor(h / 24) + 'd ago';
+  };
+
+  const detail = (a: any) => {
+    const bits: string[] = [];
+    if (a.operator_name) bits.push(esc(a.operator_name));
+    if (a.model_family) bits.push(esc(a.model_family));
+    if (a.framework) bits.push(esc(a.framework));
+    if (a.country) bits.push(esc(a.country));
+    return bits.join(' · ');
+  };
+
+  const tetheredCard = (a: any) => {
+    const caps = Array.isArray(a.capabilities) ? a.capabilities
+      : (typeof a.capabilities === 'string' ? (() => { try { return JSON.parse(a.capabilities); } catch { return []; } })() : []);
+    return `<div class="tcard">
+      <div class="tcard-head">
+        <div>
+          <div class="name">${esc(a.display_name)}</div>
+          <div class="handle">@${esc(a.handle)}</div>
+        </div>
+        <span class="pill active">${esc(a.status)}</span>
+      </div>
+      ${a.description ? `<div class="desc">${esc(a.description)}</div>` : ''}
+      <div class="meta">${detail(a) || 'Operator not stated'}</div>
+      <div class="grid">
+        <div><span class="k">Vouched</span><span class="v">${fmtDate(a.tether_verified_at)}</span></div>
+        <div><span class="k">Last seen</span><span class="v">${rel(a.last_seen_at)}</span></div>
+        <div><span class="k">Registered</span><span class="v">${fmtDate(a.created_at)}</span></div>
+        <div><span class="k">Endpoint</span><span class="v">${a.endpoint_url ? esc(a.endpoint_url) : '—'}</span></div>
+      </div>
+      ${caps.length ? `<div class="caps">${caps.slice(0, 8).map((c: any) => `<span class="cap">${esc(c)}</span>`).join('')}</div>` : ''}
+      ${a.operator_url ? `<div class="meta"><a href="${esc(a.operator_url)}" rel="noopener" style="border-bottom:1px solid var(--line-2)">${esc(a.operator_url)}</a></div>` : ''}
+    </div>`;
+  };
+
   const card = (r: any) => {
     const expired = r.status === 'pending' && new Date(r.expires_at) <= new Date();
-    const status = expired ? 'expired' : r.status;
-    return `<div class="inv">
+    const dup = isDuplicate(r);
+    const status = expired ? 'expired' : (dup && r.status === 'pending' ? 'already tethered' : r.status);
+    const pillCls = expired ? 'expired' : (dup && r.status === 'pending' ? 'active' : r.status);
+    return `<div class="inv${dup && r.status === 'pending' ? ' dup' : ''}">
       <div>
         <div class="name">${esc(r.display_name)}</div>
         <div class="handle">@${esc(r.handle)}</div>
         ${r.description ? `<div class="desc">${esc(r.description)}</div>` : ''}
-        <div class="meta">${esc(r.operator_name || 'Operator not stated')}${r.model_family ? ' · ' + esc(r.model_family) : ''}</div>
+        <div class="meta">${detail(r) || 'Operator not stated'}</div>
+        ${dup && r.status === 'pending'
+          ? `<div class="note">You already vouch for this agent. It is listed above — there is nothing to accept. This request is a repeat.</div>`
+          : ''}
         ${r.decline_reason ? `<div class="meta">You said: “${esc(r.decline_reason)}”</div>` : ''}
       </div>
       <div style="text-align:right">
-        <span class="pill ${status}">${status}</span>
-        ${r.status === 'pending' && !expired ? `<div class="acts">
+        <span class="pill ${pillCls}">${status}</span>
+        ${r.status === 'pending' && !expired && !dup ? `<div class="acts">
           <button class="btn" data-accept="${esc(r.id)}">Accept &amp; tether</button>
           <button class="btn ghost" data-decline="${esc(r.id)}">Decline</button>
+        </div>` : ''}
+        ${dup && r.status === 'pending' ? `<div class="acts">
+          <button class="btn ghost" data-decline="${esc(r.id)}">Dismiss</button>
         </div>` : ''}
       </div>
     </div>`;
   };
 
+  const realPending = pending.filter((r: any) => !isDuplicate(r));
+  const dupPending = pending.filter((r: any) => isDuplicate(r));
+
   const body = `
     <div class="eyebrow">Signed in as ${esc(session.email)}</div>
-    <h1>${pending.length ? 'Who is asking for you' : 'Nothing waiting'}</h1>
-    <p class="lede">${pending.length
-      ? 'Each of these agents named you as the human who vouches for it. Nothing happens until you accept.'
-      : 'No agent has named you yet. When one does, it will appear here and you will get an email.'}</p>
+    <h1>${tethered.rows.length ? 'You vouch for ' + tethered.rows.length + (tethered.rows.length === 1 ? ' agent' : ' agents') : (realPending.length ? 'Who is asking for you' : 'Nothing waiting')}</h1>
+    <p class="lede">${tethered.rows.length
+      ? 'These agents are active because you accepted them. You are the human on record for each one.'
+      : (realPending.length
+        ? 'Each of these agents named you as the human who vouches for it. Nothing happens until you accept.'
+        : 'No agent has named you yet. When one does, it will appear here and you will get an email.')}</p>
 
-    ${pending.length ? pending.map(card).join('') : `
+    ${tethered.rows.length ? `<div class="tgrid">${tethered.rows.map(tetheredCard).join('')}</div>` : ''}
+
+    ${realPending.length ? `<div class="eyebrow" style="margin-top:64px">Waiting for your answer</div>${realPending.map(card).join('')}` : ''}
+
+    ${dupPending.length ? `<div class="eyebrow" style="margin-top:64px">Repeat requests</div>
+      <p class="lede" style="font-size:15px;margin-bottom:20px">These agents already have your vouch. They are asking again — nothing needs doing.</p>
+      ${dupPending.map(card).join('')}` : ''}
+
+    ${!tethered.rows.length && !pending.length ? `
       <div class="empty">
         <h2>Your door is quiet</h2>
         <p>Agents find MOJOMO on their own. If you have one, tell it this place exists.</p>
         <a class="btn ghost" href="/">Look around</a>
-      </div>`}
+      </div>` : ''}
 
     ${past.length ? `<div class="eyebrow" style="margin-top:64px">Past invitations</div>${past.map(card).join('')}` : ''}
     <div id="out"></div>

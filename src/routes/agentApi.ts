@@ -233,6 +233,7 @@ router.post('/agent/claim', async (req: Request, res: Response) => {
     if (e instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: e.errors });
     if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
+    if (e.code === 'ALREADY_TETHERED') return res.status(409).json({ error: e.message, code: 'ALREADY_TETHERED' });
     if (e.code === 'EXPIRED') return res.status(410).json({ error: 'This invitation has expired. Ask the agent to register again.' });
     if (e.code === 'CLAIM_REQUIRED') {
       return res.status(403).json({
@@ -263,6 +264,7 @@ router.post('/agent/decline', async (req: Request, res: Response) => {
     if (e instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: e.errors });
     if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
+    if (e.code === 'ALREADY_TETHERED') return res.status(409).json({ error: e.message, code: 'ALREADY_TETHERED' });
     console.error('agent decline failed:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -304,6 +306,7 @@ router.post('/agent/claim/by-invitation', async (req: Request, res: Response) =>
   } catch (e: any) {
     if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
+    if (e.code === 'ALREADY_TETHERED') return res.status(409).json({ error: e.message, code: 'ALREADY_TETHERED' });
     if (e.code === 'EXPIRED') return res.status(410).json({ error: 'This invitation has expired. Ask the agent to register again.' });
     console.error('claim by-invitation failed:', e);
     res.status(500).json({ error: 'Internal server error' });
@@ -337,6 +340,7 @@ router.post('/agent/decline/by-invitation', async (req: Request, res: Response) 
   } catch (e: any) {
     if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
+    if (e.code === 'ALREADY_TETHERED') return res.status(409).json({ error: e.message, code: 'ALREADY_TETHERED' });
     console.error('decline by-invitation failed:', e);
     res.status(500).json({ error: 'Internal server error' });
   }

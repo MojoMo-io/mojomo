@@ -5,11 +5,10 @@
 //
 //   DEEPSEEK_API_KEY=...  DEEPSEEK_MODEL=deepseek-chat
 //
-// Anthropic was retired on 2026-10-21. The callAnthropic path, the
-// ALLOW_ANTHROPIC guard and the CLAUDE_* env vars were removed rather than
-// left dormant: a disabled fallback is one env edit away from spending money
-// on a provider we do not use. If a second provider is ever wanted, add it
-// here deliberately, with its own tests.
+// A retired provider path was removed rather than left dormant: a disabled
+// fallback is one env edit away from spending money on a provider we do not
+// use. If a second provider is ever wanted, add it here deliberately, with
+// its own tests.
 
 export type LlmProvider = 'deepseek';
 

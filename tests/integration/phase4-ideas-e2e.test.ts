@@ -1,5 +1,5 @@
 // Spec Phase 4 E2E (first build, token economy disabled): avatars -> conversation -> messages ->
-// reflection (mocked Claude) -> idea extracted -> refined -> advanced through gated stages -> surfaced.
+// reflection (mocked model) -> idea extracted -> refined -> advanced through gated stages -> surfaced.
 // Also proves the token-free API surface and that the flag re-enables it.
 import request from 'supertest';
 import express from 'express';

@@ -2,10 +2,9 @@
 
 **Created:** 2026-10-21
 **Baseline:** 284 tests green, tsc clean, commit `5eb4e8d`
-**LLM provider:** DeepSeek only (`src/services/llm.ts`). Anthropic/Claude was retired
-2026-10-21 — no Claude API key, SDK, or env var remains. Any sprint task that needs
-model output goes through `llm.ts`; do not reintroduce a second provider without an
-explicit decision.
+**LLM provider:** DeepSeek only (`src/services/llm.ts`). Any sprint task that needs
+model output goes through `llm.ts`; do not add a second provider without an explicit
+decision.
 
 **Goal:** Convert the tethering funnel from "hope the LLM writes a good message" into a measured, server-driven loop.
 

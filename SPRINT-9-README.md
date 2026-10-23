@@ -1,9 +1,4 @@
 # Sprint 9: Message Enhancement & Routing
-> **Historical record.** This sprint was completed against the Anthropic/Claude API.
-> Anthropic was retired on 2026-10-21; all model calls now route through DeepSeek via
-> `src/services/llm.ts`. References to Claude below describe what was built at the time,
-> not current architecture.
-
 
 **Phase:** 2  
 **Duration:** 1 week (2026-09-11 to 2026-09-17)  
@@ -13,30 +8,30 @@
 
 ## Objectives
 
-Route messages through Claude for automatic reasoning, idea scoring, and response generation. Enhance message endpoint to integrate with Sprint 8's reasoning infrastructure.
+Route messages through the model for automatic reasoning, idea scoring, and response generation. Enhance message endpoint to integrate with Sprint 8's reasoning infrastructure.
 
-**User Story:** When I send a message in a conversation, Claude automatically analyzes it, scores ideas, and suggests next steps - all asynchronously without blocking the user.
+**User Story:** When I send a message in a conversation, the model automatically analyses it, scores ideas, and suggests next steps - all asynchronously without blocking the user.
 
 ---
 
 ## Acceptance Criteria
 
 ✅ **Message Enhancement**
-- [ ] POST /conversations/:id/messages routes to Claude reasoning
+- [ ] POST /conversations/:id/messages routes to model reasoning
 - [ ] Message classification (user_message vs ai_response)
-- [ ] Automatic idea scoring (Claude-based, not just heuristic)
+- [ ] Automatic idea scoring (model-based, not just heuristic)
 - [ ] Context window management (summarize old messages if >4k tokens)
 - [ ] Prompt injection prevention (sanitize user input)
 
 ✅ **Async Processing**
-- [ ] Queue message for Claude processing
+- [ ] Queue message for model processing
 - [ ] Return immediately (non-blocking)
 - [ ] Background worker processes messages
 - [ ] Retry failed message processing
-- [ ] Update message with Claude response
+- [ ] Update message with model response
 
 ✅ **Idea Extraction**
-- [ ] Extract ideas from Claude responses
+- [ ] Extract ideas from model responses
 - [ ] Store extracted ideas in idea_repository
 - [ ] Score ideas (0.0-1.0 confidence)
 - [ ] Link ideas to conversation
@@ -44,7 +39,7 @@ Route messages through Claude for automatic reasoning, idea scoring, and respons
 ✅ **Testing**
 - [ ] Unit: Message routing logic
 - [ ] Unit: Idea extraction
-- [ ] Integration: Full message → Claude → idea flow
+- [ ] Integration: Full message → the model → idea flow
 - [ ] Integration: Async job processing
 - [ ] Load: 100 concurrent messages
 
@@ -57,12 +52,12 @@ Route messages through Claude for automatic reasoning, idea scoring, and respons
 **Modify POST /conversations/:id/messages:**
 
 
-### Part 2: Claude Integration (Day 2-3)
+### Part 2: the model Integration (Day 2-3)
 
 **Background Worker Enhancement:**
 - Process message queues
 - Build prompt with message context
-- Call Claude for analysis
+- Call the model for analysis
 - Extract ideas from response
 - Store results
 
@@ -80,7 +75,7 @@ Route messages through Claude for automatic reasoning, idea scoring, and respons
 ## Files to Create/Modify
 
 ### Modified
--  - Add Claude routing
+-  - Add the model routing
 -  - Add idea extraction
 -  - Add message processing
 
@@ -94,7 +89,7 @@ Route messages through Claude for automatic reasoning, idea scoring, and respons
 
 Add to message_queue processing:
 - message_id references
-- result storage (Claude response + ideas)
+- result storage (the model response + ideas)
 - retry logic
 
 ---
@@ -110,12 +105,12 @@ This sprint doesn't change tokenomics - it enhances the messaging layer to feed 
 - ✅ 25+ new tests passing
 - ✅ Zero Phase 1 regressions
 - ✅ Message processing latency <100ms
-- ✅ Claude reasoning triggered automatically
+- ✅ the model reasoning triggered automatically
 - ✅ Ideas extracted and scored
 - ✅ No data loss on errors
 
 ---
 
-**Sprint Owner:** Claude Haiku 4.5  
+**Sprint Owner:** the model Haiku 4.5  
 **Start Date:** 2026-09-11  
 **Target Completion:** 2026-09-17

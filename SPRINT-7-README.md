@@ -110,5 +110,5 @@ Implement the foundational conversation endpoint and genesis token allocation lo
 
 ---
 
-**Sprint Owner:** Claude Haiku 4.5  
+**Sprint Owner:** MOJOMO
 **Last Updated:** 2026-09-03

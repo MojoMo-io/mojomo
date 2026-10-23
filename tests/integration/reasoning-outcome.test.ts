@@ -1,5 +1,5 @@
 // Spec Phase 2 / Sprint 5.1: reasoning result -> ai_response message -> idea extraction (> 0.65)
-// Runs against the real mojomo_test database; Claude is mocked so no network/cost.
+// Runs against the real mojomo_test database; the model is mocked so no network/cost.
 import request from 'supertest';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
@@ -84,7 +84,7 @@ describe('pure helpers', () => {
   test('threshold is the spec value', () => expect(IDEA_THRESHOLD).toBe(0.65));
 });
 
-describe('processJob end-to-end (mocked Claude, real DB)', () => {
+describe('processJob end-to-end (mocked model, real DB)', () => {
   test('high idea_score: stores ai_response, extracts idea, completes job', async () => {
     convId = await newConversation('RO high');
     const job = await enqueue(convId);
@@ -146,7 +146,7 @@ describe('processJob end-to-end (mocked Claude, real DB)', () => {
     expect(n).toBe(0);
   });
 
-  test('Claude failure: log marked error, job returns to pending with one attempt, fails after max_attempts', async () => {
+  test('Model failure: log marked error, job returns to pending with one attempt, fails after max_attempts', async () => {
     const id = await newConversation('RO fail');
     let job = await enqueue(id);
     mockedReasoning.mockRejectedValue(new Error('simulated 529 overloaded'));

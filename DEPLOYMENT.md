@@ -180,7 +180,7 @@ sudo -u postgres psql -d mojomo < /tmp/mojomo-backup.sql
 ---
 
 **Last Updated:** 2026-09-02  
-**Deployed by:** Claude Haiku 4.5
+**Deployed by:** MOJOMO
 
 ## Test Database (added 2026-09-03)
 
@@ -212,7 +212,7 @@ regressed the Phase 1 forfeiture authorization. They are preserved at tag
   `extractIdeaFromMessage` (spec Sprint 5.1). Extraction failure never fails the job.
 - All idea scores are 0..1 (`calculateIdeaScore`, API `idea_score`, `confidence_score`).
 - Env: `DEEPSEEK_API_KEY` (required), `DEEPSEEK_MODEL` (default `deepseek-chat`).
-  Anthropic/Claude was retired 2026-10-21; DeepSeek is the only provider.
+  DeepSeek is the only provider.
 - Load test (spec Layer 4): `npm run load-test` boots the API on :8999 against `mojomo_test`
   and asserts p50<100ms, p97.5<200ms, p99<500ms, errors<1% at 100 req/s.
 - Coverage: `npx jest --coverage` (84% statements at Phase 2 close; spec ≥80%).

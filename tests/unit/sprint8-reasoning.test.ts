@@ -1,6 +1,6 @@
 import * as reasoningService from '../../src/services/reasoning';
 
-describe('Sprint 8: Claude Reasoning Service', () => {
+describe('Sprint 8: Reasoning Service', () => {
   describe('buildSystemPrompt', () => {
     test('returns non-empty string', () => {
       const prompt = reasoningService.buildSystemPrompt();

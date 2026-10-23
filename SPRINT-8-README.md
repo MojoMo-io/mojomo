@@ -1,9 +1,4 @@
-# Sprint 8: Reasoning Prompt Setup - Claude Integration
-> **Historical record.** This sprint was completed against the Anthropic/Claude API.
-> Anthropic was retired on 2026-10-21; all model calls now route through DeepSeek via
-> `src/services/llm.ts`. References to Claude below describe what was built at the time,
-> not current architecture.
-
+# Sprint 8: Reasoning Prompt Setup
 
 **Phase:** 2  
 **Duration:** 1 week (2026-09-04 to 2026-09-10)  
@@ -13,23 +8,23 @@
 
 ## Objectives
 
-Integrate Claude API for conversation reasoning. Establish the foundation for multi-turn conversations with Claude analyzing message context and extracting insights.
+Integrate the LLM API for conversation reasoning. Establish the foundation for multi-turn conversations with the model analysing message context and extracting insights.
 
-**User Story:** As a user in a conversation, I can trigger Claude to reason about the conversation and get structured reasoning output, which feeds into idea extraction and quality scoring.
+**User Story:** As a user in a conversation, I can trigger the model to reason about the conversation and get structured reasoning output, which feeds into idea extraction and quality scoring.
 
 ---
 
 ## Acceptance Criteria
 
-✅ **Claude API Integration**
+✅ **LLM API Integration**
 - [x] API key configuration from .env
-- [x] Claude client initialization
+- [x] LLM client initialization
 - [x] Error handling & retry logic (exponential backoff, max 3 attempts)
 - [x] Rate limiting respect (track usage, throttle if needed)
 - [ ] Timeout handling (30-second max per request)
 
 ✅ **Reasoning Endpoint**
-- [ ] POST /conversations/:id/reasoning - Trigger Claude reasoning
+- [ ] POST /conversations/:id/reasoning - Trigger model reasoning
 - [ ] Request: { prompt_override?: string }
 - [ ] Response: { reasoning_id, status, message_count, token_estimate }
 - [ ] Validation: Conversation exists, user has access
@@ -45,7 +40,7 @@ Integrate Claude API for conversation reasoning. Establish the foundation for mu
 - [ ] System prompt designed (conversation analysis)
 - [ ] Context management (summarize old messages if needed)
 - [ ] Response format (structured JSON)
-- [ ] Validation (parse Claude response, validate JSON)
+- [ ] Validation (parse the model response, validate JSON)
 
 ✅ **Testing**
 - [ ] Unit: Prompt formatting
@@ -142,7 +137,7 @@ Return { reasoning_id, status: "pending" }
 Background Worker:
   Get reasoning_logs by id
   Fetch conversation messages
-  Call Claude API
+  Call the model API
   Parse response
   Update reasoning_logs (status=completed)
   Update message_queue (status=completed)
@@ -156,21 +151,21 @@ GET /reasoning-logs/:id
 ## Files to Create/Modify
 
 ### New Files
-- `src/services/claude.ts` - Claude API client
+- `src/services/the model.ts` - the model API client
 - `src/routes/reasoning.ts` - Reasoning endpoints
 - `tests/unit/sprint8-reasoning.test.ts` - Unit tests
 - `tests/integration/sprint8-reasoning.test.ts` - Integration tests
 
 ### Modified Files
 - `src/server.ts` - Register reasoning routes
-- `.env.example` - Add CLAUDE_API_KEY
+- `.env.example` - Add LLM provider key
 - `schema.sql` - Add reasoning_logs and message_queue tables
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests (Claude Client)
+### Unit Tests (the model Client)
 - Prompt formatting with different message counts
 - Response parsing (valid JSON, invalid JSON, malformed)
 - Error handling (timeout, rate limit, API error)
@@ -183,7 +178,7 @@ GET /reasoning-logs/:id
 - Invalid conversation ID returns 404
 - Unauthorized user returns 403
 - Async job completes and updates status
-- Error in Claude API doesn't crash queue
+- Error in the model API doesn't crash queue
 
 ### Smoke Tests
 - Create reasoning job
@@ -197,7 +192,7 @@ GET /reasoning-logs/:id
 ## Definition of Done
 
 - [x] Sprint 8 README created
-- [ ] Claude client implemented
+- [ ] the model client implemented
 - [ ] Reasoning endpoints working
 - [ ] Database tables created
 - [ ] All 20+ tests passing
@@ -211,10 +206,10 @@ GET /reasoning-logs/:id
 
 ## Next Sprint (Sprint 9)
 
-Sprint 9 will enhance message routing to automatically trigger reasoning when messages arrive, and integrate Claude-based idea scoring.
+Sprint 9 will enhance message routing to automatically trigger reasoning when messages arrive, and integrate the model-based idea scoring.
 
 ---
 
-**Sprint Owner:** Claude Haiku 4.5  
+**Sprint Owner:** the model Haiku 4.5  
 **Start Date:** 2026-09-04  
 **Target Completion:** 2026-09-10

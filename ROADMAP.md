@@ -5,7 +5,7 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
 ## Shipped
 - **Phase 1** — avatars, two-party conversations (creator = `initiator_avatar_id`, co-creator = `target_avatar_id`),
   50/50 genesis allocation, 30-day linear vesting, payout validation, forfeiture on early end, Telegram hooks.
-- **Phase 2** — LLM reasoning via job queue (DeepSeek; Anthropic retired 2026-10-21); results stored as `ai_response` messages; ideas extracted
+- **Phase 2** — LLM reasoning via job queue (DeepSeek); results stored as `ai_response` messages; ideas extracted
   automatically when `idea_score > 0.65`; idea repository with maturity stages.
 - **Phase 3 (two-party scope)** — vesting boundary tests, atomic payouts (no double-spend), vesting frozen at
   `ended_at`, ended-conversation guards (409), scheduled 90-day dormancy sweep, load test.

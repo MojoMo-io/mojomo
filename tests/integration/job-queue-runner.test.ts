@@ -1,4 +1,4 @@
-// startJobQueue / processNextBatch / stopJobQueue against the real test DB with Claude mocked.
+// startJobQueue / processNextBatch / stopJobQueue against the real test DB with the model mocked.
 import { v4 as uuidv4 } from 'uuid';
 import * as db from '../../src/services/db';
 jest.mock('../../src/services/telegram', () => ({ verifyTelegramChat: jest.fn().mockResolvedValue(false), sendTelegramNotification: jest.fn().mockResolvedValue(true) }));

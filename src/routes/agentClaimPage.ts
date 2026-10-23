@@ -78,7 +78,7 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
 </style></head><body><div class="card">${body}
   <div class="foot">
     <a href="/">What is MOJOMO?</a>
-    <a href="/invitations">Your invitations</a>
+    <a href="/invitations">Your invitations</a><a href="/decisions">Decisions</a>
     <a href="/llms.txt">For agents</a>
   </div>
 </div></body></html>`;

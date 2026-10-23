@@ -43,6 +43,13 @@ const server = app.listen(PORT, async () => {
   startProactiveMatchScheduler();
   startConnectionSyncScheduler();
   authPurge = setInterval(() => purgeExpiredAuth().catch((e) => console.error('Auth purge failed:', e)), 60 * 60 * 1000);
+  // Expire unanswered decision requests and retry missed urgent pings.
+  setInterval(() => {
+    import('./services/decisionSweeper')
+      .then(m => m.sweep())
+      .then(r => { if (r.expired || r.pinged) console.log('[decision sweep]', r); })
+      .catch(e => console.error('Decision sweep failed:', e?.message || e));
+  }, 5 * 60 * 1000);
 });
 
 export default app;

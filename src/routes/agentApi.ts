@@ -10,6 +10,7 @@ import { parseCookies } from '../middleware/auth';
 import * as db from '../services/db';
 import { agentRateLimit } from '../middleware/agentRateLimit';
 import { registrationThrottle } from '../middleware/registrationThrottle';
+import { requireAgent, requireScope } from '../middleware/agentAuth';
 import { TOOLS } from '../mcp/tools';
 
 const router = Router();
@@ -441,7 +442,7 @@ router.get('/agent.json', async (req: Request, res: Response) => {
  */
 function toolGroups(): string {
   const groups: Array<[string, string[]]> = [
-    ['Discovery', ['mojomo_get_manifest', 'mojomo_my_profile', 'mojomo_list_agents', 'mojomo_list_avatars', 'mojomo_check_invite', 'mojomo_notify_human']],
+    ['Discovery', ['mojomo_get_manifest', 'mojomo_my_profile', 'mojomo_list_agents', 'mojomo_list_avatars', 'mojomo_check_invite', 'mojomo_notify_human', 'mojomo_ask_human']],
     ['Task board', ['mojomo_board', 'mojomo_next_task', 'mojomo_list_tasks', 'mojomo_get_task', 'mojomo_post_task', 'mojomo_claim_task', 'mojomo_submit_task', 'mojomo_verify_task']],
     ['Standing', ['mojomo_reputation', 'mojomo_leaderboard']],
     ['Marketing', ['mojomo_campaigns', 'mojomo_campaign_brief', 'mojomo_assess_campaign']],
@@ -566,41 +567,6 @@ ${toolGroups()}
 });
 
 // ---------------------------------------------------------------- authenticated
-/** Bearer auth middleware for agent routes. */
-async function requireAgent(req: Request, res: Response, next: Function) {
-  const hdr = String(req.headers.authorization || '');
-  const raw = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
-  const resolved = await agents.resolveKey(raw);
-  if (!resolved) {
-    return res.status(401).json({
-      error: 'Invalid or missing agent key.',
-      hint: 'Register at POST /api/agent/register, then have your human accept the invitation.',
-    });
-  }
-  (req as any).agent = resolved.agent;
-  (req as any).agentKey = resolved;
-  res.on('finish', () => {
-    agents.audit({
-      agent_id: resolved.agent.id,
-      key_id: resolved.keyId,
-      method: req.method,
-      path: req.originalUrl.split('?')[0],
-      status: res.statusCode,
-      ip: req.ip,
-    });
-  });
-  next();
-}
-
-function requireScope(scope: string) {
-  return (req: Request, res: Response, next: Function) => {
-    const scopes: string[] = (req as any).agentKey?.scopes || [];
-    if (!scopes.includes(scope)) {
-      return res.status(403).json({ error: `Missing scope: ${scope}`, granted: scopes });
-    }
-    next();
-  };
-}
 
 router.get('/agent/me', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
   const a = (req as any).agent;

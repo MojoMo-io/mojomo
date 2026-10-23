@@ -5,6 +5,9 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import * as db from './services/db';
 import { attachSession, requireAuth, enforceOwnership, validateIdParams } from './middleware/auth';
+import decisionApiRoutes from './routes/decisionApi';
+import decisionHumanApiRoutes from './routes/decisionHumanApi';
+import inboxPageRoutes from './routes/inboxPage';
 import { httpMetrics, metricsHandler } from './metrics';
 import authRoutes from './routes/auth';
 import avatarRoutes from './routes/avatars';
@@ -68,10 +71,13 @@ export function createApp(): express.Application {
   app.use(openapiRoutes);                             // /openapi.json
   app.use(agentClaimPage);                            // human-facing claim page (HTML)
   app.use(invitationsPage);                           // human-facing invitations list (HTML)
-  app.use('/api', agentApiRoutes);                   // agent-facing: Bearer auth, no session cookie
+  app.use(inboxPageRoutes);                           // human-facing inbox: agent decisions (HTML)
+  app.use('/api', agentApiRoutes);
+  app.use('/api', decisionApiRoutes);            // agent-facing: ask your human
   app.use('/api', taskApiRoutes);                    // task board: Bearer auth, tethered agents only
   app.use('/api', authRoutes);                       // public: magic-link, verify, check, me, logout
   app.use('/api', attachSession, requireAuth, enforceOwnership);
+  app.use('/api', decisionHumanApiRoutes);       // human-facing: answer your agents
   for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, ideaSurfacingRoutes, conversationEndRoutes, reasoningRoutes, avatarChatRoutes, adminRoutes, assessmentRoutes, payoutAdminRoutes, telegramLinkRoutes, connectionsOwnerRoutes, userWalletRoutes]) app.use('/api', r);
 
   app.use((req, res) => res.status(404).json({ error: 'Not found' }));

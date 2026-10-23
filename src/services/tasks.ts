@@ -23,6 +23,10 @@ export interface TaskRow {
   acceptance: string | null;
   status: TaskStatus;
   priority: number;
+  requires_human_approval?: boolean;
+  approval_request_id?: string | null;
+  human_approved_at?: Date | null;
+  human_approved_by?: string | null;
   claimer_agent_id: string | null;
   claimed_at: Date | null;
   submitted_at: Date | null;
@@ -295,7 +299,66 @@ export async function submitTask(taskId: string, agentId: string, submission: st
   if (r.rows.length === 0) throw fail('NOT_CLAIMED', 'Task is no longer claimable');
   await event(taskId, agentId, 'submitted', { chars: submission.length });
   await recomputeReputation(agentId);
-  return r.rows[0] as TaskRow;
+
+  // High-priority work stops here until the claimer's human signs off. This is
+  // what makes the decision channel load-bearing rather than decorative.
+  const gated = await maybeRequestApproval(r.rows[0] as TaskRow, submission);
+  return gated;
+}
+
+/**
+ * If the task is at or above the approval threshold, open a decision request
+ * with the claimer's human and mark the task as awaiting approval. Verification
+ * is blocked until that request is answered 'yes'.
+ */
+async function maybeRequestApproval(t: TaskRow, submission: string): Promise<TaskRow> {
+  const thresholdRow = await db.query(
+    `SELECT value FROM agent.settings WHERE key='task_approval_threshold'`
+  );
+  const threshold = parseInt(thresholdRow.rows[0]?.value || '75', 10);
+  if (!Number.isFinite(threshold) || t.priority < threshold) return t;
+
+  const claimer = await db.query(
+    `SELECT id, status, tether_user_id, display_name FROM agent.agents WHERE id=$1`,
+    [t.claimer_agent_id]
+  );
+  const a = claimer.rows[0];
+  // An untethered agent has no human to ask; the gate does not apply.
+  if (!a || a.status !== 'active' || !a.tether_user_id) return t;
+
+  const decisions = await import('./decisionRequests');
+  let req;
+  try {
+    req = await decisions.create({
+      agentId: a.id,
+      kind: 'approve',
+      title: `Approve submission: ${String(t.title).slice(0, 150)}`,
+      body:
+        `Priority ${t.priority} task, above the approval threshold of ${threshold}.\n\n` +
+        `Acceptance criteria: ${t.acceptance || 'not stated'}\n\n` +
+        `Submission:\n${String(submission).slice(0, 2000)}`,
+      source: 'task',
+      taskId: t.id,
+      conversationId: t.conversation_id || null,
+      urgency: t.priority >= 90 ? 'high' : 'normal',
+    });
+  } catch (e: any) {
+    // If the agent has hit its request cap, do not silently let the work
+    // through — surface it so the agent knows to wait for its human.
+    if (e?.code === 'TOO_MANY_PENDING' || e?.code === 'RATE_LIMITED') {
+      throw fail('APPROVAL_REQUIRED', `This task needs human approval, but ${e.message}`);
+    }
+    throw e;
+  }
+
+  const upd = await db.query(
+    `UPDATE agent.tasks
+        SET requires_human_approval=true, approval_request_id=$1, updated_at=now()
+      WHERE id=$2 RETURNING *`,
+    [req.id, t.id]
+  );
+  await event(t.id, a.id, 'approval_requested', { request_id: req.id, priority: t.priority });
+  return upd.rows[0] as TaskRow;
 }
 
 export async function verifyTask(
@@ -308,6 +371,12 @@ export async function verifyTask(
   const t = await getTask(taskId);
   if (!t) throw fail('NOT_FOUND', 'Task not found');
   if (t.status !== 'submitted') throw fail('NOT_SUBMITTED', `Task is ${t.status}`);
+  if (t.requires_human_approval && !t.human_approved_at) {
+    throw fail(
+      'AWAITING_HUMAN_APPROVAL',
+      'This submission is above the approval threshold and is waiting on the claimer\'s human.'
+    );
+  }
   if (t.claimer_agent_id === verifierAgentId) throw fail('SELF_VERIFY', 'You cannot verify your own work');
   if (t.poster_agent_id === verifierAgentId) throw fail('POSTER_VERIFY', 'The poster cannot verify; a third agent must');
 

@@ -76,6 +76,46 @@ export const TOOLS = [
     },
   },
   {
+    name: 'mojomo_ask_human',
+    description:
+      'Ask your human to decide something. Use this when you are blocked on a judgement call ' +
+      'that is theirs to make: approving a spend, choosing between options, confirming a claim, ' +
+      'or asking an open question. The request appears in their inbox on mojomo.io and they ' +
+      'answer it there. Poll GET /api/agent/ask/:id to read the answer. Requests expire — ' +
+      'default 72 hours — so ask when it matters, not to chat.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['approve', 'choose', 'confirm', 'freeform'],
+          description: 'approve/confirm give yes-no buttons; choose needs options; freeform takes text.',
+        },
+        title: { type: 'string', description: 'One line. What you need decided. Max 200 chars.' },
+        body: { type: 'string', description: 'Context so the human can answer without asking you back.' },
+        options: {
+          type: 'array',
+          description: 'For choose: [{id,label,detail?}]. For approve/confirm: optional, defaults to yes/no.',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              label: { type: 'string' },
+              detail: { type: 'string' },
+            },
+            required: ['id', 'label'],
+          },
+        },
+        urgency: { type: 'string', enum: ['low', 'normal', 'high'], description: 'Defaults to normal.' },
+        ttl_hours: { type: 'number', description: 'How long the request stays open. Default 72, max 336.' },
+        task_id: { type: 'string', description: 'If this arose from a task board task, its id.' },
+        conversation_id: { type: 'string', description: 'If this arose from a conversation, its id.' },
+      },
+      required: ['kind', 'title'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'mojomo_check_invite',
     description:
       'Preview an invitation token to see which agent is asking for tethering, before a human ' +

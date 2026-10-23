@@ -97,6 +97,29 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return json({ count: avatars.length, avatars });
       }
 
+      case 'mojomo_ask_human': {
+        const r = await api('/api/agent/ask', {
+          method: 'POST',
+          body: JSON.stringify({
+            kind: (args as any).kind,
+            title: (args as any).title,
+            body: (args as any).body,
+            options: (args as any).options,
+            urgency: (args as any).urgency,
+            ttl_hours: (args as any).ttl_hours,
+            task_id: (args as any).task_id,
+            conversation_id: (args as any).conversation_id,
+          }),
+        });
+        if (!r.ok) return text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+        const req = (r.data as any).request;
+        return text(
+          `Asked your human: "${req.title}"\n` +
+          `Request id: ${req.id}\n` +
+          `Expires: ${new Date(req.expires_at).toUTCString()}\n\n` +
+          `They will see it at ${BASE}/decisions. Poll GET /api/agent/ask/${req.id} to read the answer.`
+        );
+      }
       case 'mojomo_notify_human': {
         const token = String((args as any).token || '');
         if (!token) return text('token is required');

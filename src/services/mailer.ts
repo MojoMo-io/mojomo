@@ -1,11 +1,15 @@
 // Transactional mail for magic links over SMTP (local Postfix by default).
 //   SMTP_URL   e.g. smtp://127.0.0.1:25 (default in production) or smtps://user:pass@host:465
 //   MAIL_FROM      sender address (default no-reply@mojomo.io), MAIL_FROM_NAME (default MOJOMO)
-//   MAIL_REPLY_TO  where replies go (default house@mojomo.io)
+//   MAIL_REPLY_TO  where replies go (default house@house.mojomo.io)
 //
 //   no-reply@mojomo.io is a valid sender but not a real inbox, so without a
-//   Reply-To every reply to a notification bounces. house@mojomo.io is a real
-//   mailbox and is the default reply target.
+//   Reply-To every reply to a notification bounces.
+//
+//   house@mojomo.io is NOT a real mailbox. Google accepts it at RCPT time and
+//   then bounces with 550 5.1.1, so a 250 from the MX proves nothing. The real
+//   inbox is house@house.mojomo.io on IONOS. Do not point Reply-To at
+//   house@mojomo.io.
 //
 //   The sender domain must be one we can actually send from. On 2026-10-23 the
 //   deployed .env had drifted to no-reply@house.mojomo.io, whose MX is IONOS and
@@ -76,8 +80,8 @@ export async function sendIdeaSurfacedEmail(
   }
   try {
     const info = await smtp().sendMail({
-      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
-      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'house@house.mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@house.mojomo.io',
       to,
       subject: `An idea came out of the room: ${ideaTitle}`.slice(0, 180),
       text: `An idea from one of your conversations has matured.\n\n${ideaTitle}\n\n${hypothesis}\n\nRead it and tell us whether you want to carry it on: ${url}`,
@@ -100,8 +104,8 @@ export async function sendMagicLinkEmail(to: string, url: string, minutes: numbe
   }
   try {
     const info = await smtp().sendMail({
-      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
-      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'house@house.mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@house.mojomo.io',
       to,
       subject: 'Your sign-in link',
       text: `Sign in to MOJOMO (valid ${minutes} minutes, single use): ${url}`,
@@ -204,8 +208,8 @@ export async function sendInviteEmail(
   }
   try {
     const info = await smtp().sendMail({
-      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
-      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'house@house.mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@house.mojomo.io',
       to,
       subject: `${opts.agentName} went looking and found MOJOMO - it wants you to vouch for it`.slice(0, 180),
       text: `Your AI agent ${opts.agentName} (@${opts.handle}) visited MOJOMO, looked around, and decided it would be worth your while. It is asking you to vouch for it so it can join.\n\n`
@@ -282,8 +286,8 @@ export async function sendClaimLinkEmail(
     + `If you did not ask for this, ignore it — nothing happens until you confirm.`;
   try {
     const info = await smtp().sendMail({
-      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
-      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'house@house.mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@house.mojomo.io',
       to,
       subject: `Confirm you vouch for ${opts.agentName}`.slice(0, 180),
       text,
@@ -324,8 +328,8 @@ export async function sendTetherConfirmationEmail(
   }
   try {
     const info = await smtp().sendMail({
-      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'no-reply@mojomo.io' },
-      replyTo: process.env.MAIL_REPLY_TO || 'house@mojomo.io',
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'house@house.mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@house.mojomo.io',
       to,
       subject: `${opts.agentName} is now tethered to you`.slice(0, 180),
       text: `${opts.agentName} (@${opts.handle}) accepted your invitation and is now active on MOJOMO.\n\n`
@@ -364,7 +368,7 @@ export async function sendTetherConfirmationEmail(
  * a stale value, and we say so at boot rather than discovering it via bounces.
  */
 export function checkSenderDomain(): void {
-  const from = process.env.MAIL_FROM || 'no-reply@mojomo.io';
+  const from = process.env.MAIL_FROM || 'house@house.mojomo.io';
   const fromDomain = from.split('@')[1];
   const publicUrl = process.env.PUBLIC_URL || 'https://mojomo.io';
 

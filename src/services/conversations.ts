@@ -11,27 +11,35 @@ import {
 } from '../types';
 
 /**
- * Allocate genesis tokens: 50/50 split between initiator and target
+ * Allocate genesis tokens: 70/30 split between creator (initiator) and co-creator (target).
+ *
+ * Policy (2026-10-23): the creator holds 70% and the co-creator 30% at genesis.
+ * Further team members draw from a pool capped at 20% of the conversation, funded
+ * by the creator and co-creator only (see specialists.ts). Once that pool is full
+ * the creator/co-creator pair always holds 80% between them, still in a 70:30 ratio.
  */
+export const GENESIS_CREATOR_PCT = 70.0;
+export const GENESIS_CO_CREATOR_PCT = 30.0;
+
 export function allocateGenesisTokens(
   initiator_avatar_id: string,
   target_avatar_id: string,
   total_tokens: number
 ): OwnershipLedger {
-  const half_tokens = total_tokens / 2;
-  const half_pct = 50.0;
+  const creator_tokens = (GENESIS_CREATOR_PCT / 100) * total_tokens;
+  const co_creator_tokens = (GENESIS_CO_CREATOR_PCT / 100) * total_tokens;
 
   return {
     [initiator_avatar_id]: {
-      ownership_pct: half_pct,
-      token_balance: half_tokens,
+      ownership_pct: GENESIS_CREATOR_PCT,
+      token_balance: creator_tokens,
       vested_pct: 0,
       buy_in_amount: 0,
       join_round: 0,
     },
     [target_avatar_id]: {
-      ownership_pct: half_pct,
-      token_balance: half_tokens,
+      ownership_pct: GENESIS_CO_CREATOR_PCT,
+      token_balance: co_creator_tokens,
       vested_pct: 0,
       buy_in_amount: 0,
       join_round: 0,

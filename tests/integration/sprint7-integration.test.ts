@@ -224,8 +224,8 @@ describe('Sprint 7: Conversation Endpoints - Integration Tests', () => {
         .expect(200);
 
       expect(res.body.avatar_id).toBe(avatar1_id);
-      expect(res.body.total_tokens).toBe(500);
-      expect(res.body.ownership_pct).toBe(50);
+      expect(res.body.total_tokens).toBe(700);
+      expect(res.body.ownership_pct).toBe(70);
       expect(res.body.vested_pct).toBe(0);
     });
 
@@ -269,7 +269,7 @@ describe('Sprint 7: Conversation Endpoints - Integration Tests', () => {
   });
 
   describe('Conversation Genesis Allocation - E2E', () => {
-    test('creates conversation with correct 50/50 split', async () => {
+    test('creates conversation with correct 70/30 split', async () => {
       const res = await request(app)
         .post('/api/conversations')
         .send({
@@ -280,10 +280,10 @@ describe('Sprint 7: Conversation Endpoints - Integration Tests', () => {
         })
         .expect(201);
 
-      expect(res.body.ownership_ledger[avatar1_id].token_balance).toBe(2500);
-      expect(res.body.ownership_ledger[avatar2_id].token_balance).toBe(2500);
-      expect(res.body.ownership_ledger[avatar1_id].ownership_pct).toBe(50);
-      expect(res.body.ownership_ledger[avatar2_id].ownership_pct).toBe(50);
+      expect(res.body.ownership_ledger[avatar1_id].token_balance).toBe(3500);
+      expect(res.body.ownership_ledger[avatar2_id].token_balance).toBe(1500);
+      expect(res.body.ownership_ledger[avatar1_id].ownership_pct).toBe(70);
+      expect(res.body.ownership_ledger[avatar2_id].ownership_pct).toBe(30);
     });
 
     test('handles fractional tokens in genesis', async () => {

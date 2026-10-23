@@ -3,15 +3,15 @@ import * as conversationService from '../../src/services/conversations';
 
 describe('Sprint 7: Conversation Creation & Genesis Allocation', () => {
   describe('allocateGenesisTokens', () => {
-    test('allocates exactly 50/50 split', () => {
+    test('allocates exactly 70/30 split (creator / co-creator)', () => {
       const id1 = uuidv4();
       const id2 = uuidv4();
       const ledger = conversationService.allocateGenesisTokens(id1, id2, 1000);
 
-      expect(ledger[id1].token_balance).toBe(500);
-      expect(ledger[id2].token_balance).toBe(500);
-      expect(ledger[id1].ownership_pct).toBe(50);
-      expect(ledger[id2].ownership_pct).toBe(50);
+      expect(ledger[id1].token_balance).toBe(700);
+      expect(ledger[id2].token_balance).toBe(300);
+      expect(ledger[id1].ownership_pct).toBe(70);
+      expect(ledger[id2].ownership_pct).toBe(30);
     });
 
     test('sums tokens to total regardless of odd amounts', () => {
@@ -64,8 +64,8 @@ describe('Sprint 7: Conversation Creation & Genesis Allocation', () => {
       const id2 = uuidv4();
       const ledger = conversationService.allocateGenesisTokens(id1, id2, 1000000);
 
-      expect(ledger[id1].token_balance).toBe(500000);
-      expect(ledger[id2].token_balance).toBe(500000);
+      expect(ledger[id1].token_balance).toBe(700000);
+      expect(ledger[id2].token_balance).toBe(300000);
     });
 
     test('creates ledger for exactly two avatars', () => {

@@ -14,7 +14,9 @@ function simulateSpecialistJoin(
   join_round: number,
   total_tokens: number = 1000
 ): OwnershipLedger {
-  const DILUTION_RATE = 0.15;
+  // Policy (2026-10-23): team pool capped at 20%, split equally among members.
+  // Only the creator and co-creator fund it, diluted proportionally.
+  const TEAM_POOL_PCT = 20;
 
   const initiator = currentLedger[initiator_id];
   const target = currentLedger[target_id];
@@ -23,15 +25,26 @@ function simulateSpecialistJoin(
     throw new Error('Initiator or target not found');
   }
 
-  const initiator_extracted = initiator.ownership_pct * DILUTION_RATE;
-  const target_extracted = target.ownership_pct * DILUTION_RATE;
-  const total_extracted = initiator_extracted + target_extracted;
+  const existing_members = Object.entries(currentLedger)
+    .filter(([id, e]: [string, any]) => id !== initiator_id && id !== target_id && (e.join_round || 0) > 0)
+    .length;
+  const member_count = existing_members + 1;
+  const per_member = TEAM_POOL_PCT / member_count;
 
-  const initiator_new_pct = initiator.ownership_pct - initiator_extracted;
-  const target_new_pct = target.ownership_pct - target_extracted;
+  const founders_total = 100 - TEAM_POOL_PCT;
+  const ratio = initiator.ownership_pct / (initiator.ownership_pct + target.ownership_pct);
+  const initiator_new_pct = founders_total * ratio;
+  const target_new_pct = founders_total * (1 - ratio);
+
+  const updated: any = { ...currentLedger };
+  for (const [id, e] of Object.entries(currentLedger)) {
+    if (id !== initiator_id && id !== target_id && ((e as any).join_round || 0) > 0) {
+      updated[id] = { ...(e as any), ownership_pct: per_member, token_balance: (per_member / 100) * total_tokens };
+    }
+  }
 
   return {
-    ...currentLedger,
+    ...updated,
     [initiator_id]: {
       ...initiator,
       ownership_pct: initiator_new_pct,
@@ -43,8 +56,8 @@ function simulateSpecialistJoin(
       token_balance: (target_new_pct / 100) * total_tokens,
     },
     [specialist_id]: {
-      ownership_pct: total_extracted,
-      token_balance: (total_extracted / 100) * total_tokens,
+      ownership_pct: per_member,
+      token_balance: (per_member / 100) * total_tokens,
       vested_pct: 0,
       buy_in_amount: 0,
       join_round,
@@ -61,9 +74,9 @@ describe('Specialist Join: Single Joins', () => {
     const genesis = allocateGenesisTokens(avatar_a, avatar_b, 1000);
     const afterJoin = simulateSpecialistJoin(genesis, specialist_1, avatar_a, avatar_b, 1, 1000);
 
-    expect(afterJoin[avatar_a].ownership_pct).toBeCloseTo(42.5, 10);
-    expect(afterJoin[avatar_b].ownership_pct).toBeCloseTo(42.5, 10);
-    expect(afterJoin[specialist_1].ownership_pct).toBeCloseTo(15, 10);
+    expect(afterJoin[avatar_a].ownership_pct).toBeCloseTo(56, 10);
+    expect(afterJoin[avatar_b].ownership_pct).toBeCloseTo(24, 10);
+    expect(afterJoin[specialist_1].ownership_pct).toBeCloseTo(20, 10);
   });
 
   it('should sum to 100% after single specialist joins', () => {
@@ -115,7 +128,7 @@ describe('Specialist Join: Sequential Joins', () => {
     expect(total).toBeCloseTo(100, 8);
   });
 
-  it('should keep earlier specialists constant as new ones join', () => {
+  it('should re-slice earlier specialists as new ones join', () => {
     let ledger = allocateGenesisTokens(avatar_a, avatar_b, 1000);
     ledger = simulateSpecialistJoin(ledger, 'specialist-1', avatar_a, avatar_b, 1, 1000);
     const s1_after_1 = ledger['specialist-1'].ownership_pct;
@@ -125,20 +138,22 @@ describe('Specialist Join: Sequential Joins', () => {
     }
     const s1_after_5 = ledger['specialist-1'].ownership_pct;
 
-    expect(s1_after_1).toBeCloseTo(s1_after_5, 10);
-    expect(s1_after_1).toBeCloseTo(15, 10);
+    // The pool divides more ways, so an earlier member's slice shrinks.
+    expect(s1_after_1).toBeCloseTo(20, 10); // 20 / 1
+    expect(s1_after_5).toBeCloseTo(4, 10);  // 20 / 5
   });
 
-  it('should decrease A and B equally', () => {
+  it('should dilute A and B proportionally, preserving their ratio', () => {
     let ledger = allocateGenesisTokens(avatar_a, avatar_b, 1000);
 
     for (let i = 1; i <= 5; i++) {
       ledger = simulateSpecialistJoin(ledger, `specialist-${i}`, avatar_a, avatar_b, i, 1000);
-      expect(ledger[avatar_a].ownership_pct).toBeCloseTo(ledger[avatar_b].ownership_pct, 10);
+      expect(ledger[avatar_a].ownership_pct).toBeCloseTo(56, 10);
+      expect(ledger[avatar_b].ownership_pct).toBeCloseTo(24, 10);
     }
   });
 
-  it('should allocate less to later specialists', () => {
+  it('should allocate an equal slice to every specialist', () => {
     let ledger = allocateGenesisTokens(avatar_a, avatar_b, 1000);
     const allocations: number[] = [];
 
@@ -147,11 +162,16 @@ describe('Specialist Join: Sequential Joins', () => {
       allocations.push(ledger[`specialist-${i}`].ownership_pct);
     }
 
+    // At the moment of joining each member took the then-current equal slice,
+    // so the recorded sequence shrinks as the pool divides more ways.
     for (let i = 1; i < allocations.length; i++) {
       expect(allocations[i]).toBeLessThan(allocations[i - 1]);
     }
 
-    expect(allocations[0]).toBeCloseTo(15, 10);
+    // In the final ledger every member holds the same 2% (20 / 10).
+    for (let i = 1; i <= 10; i++) {
+      expect(ledger[`specialist-${i}`].ownership_pct).toBeCloseTo(2, 10);
+    }
   });
 
   it('should handle 100 specialists without error', () => {
@@ -191,9 +211,9 @@ describe('Specialist Join: Edge Cases', () => {
 
     const afterJoin = simulateSpecialistJoin(ledger, 'specialist-1', avatar_a, avatar_b, 1, 1000);
 
-    expect(afterJoin[avatar_a].ownership_pct).toBeCloseTo(51, 10);
-    expect(afterJoin[avatar_b].ownership_pct).toBeCloseTo(34, 10);
-    expect(afterJoin['specialist-1'].ownership_pct).toBeCloseTo(15, 10);
+    expect(afterJoin[avatar_a].ownership_pct).toBeCloseTo(48, 10);
+    expect(afterJoin[avatar_b].ownership_pct).toBeCloseTo(32, 10);
+    expect(afterJoin['specialist-1'].ownership_pct).toBeCloseTo(20, 10);
     expect(validateOwnershipSum(afterJoin)).toBe(true);
   });
 

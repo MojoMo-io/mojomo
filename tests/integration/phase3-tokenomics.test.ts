@@ -35,14 +35,14 @@ beforeAll(async () => {
 });
 afterAll(async () => { stopDormantScheduler(); await db.query('DELETE FROM mojomo.users WHERE id = $1', [userId]); });
 
-describe('vesting boundaries (30-day linear, genesis 500/500)', () => {
-  test.each([[0, 0, 0], [15, 50, 250], [30, 100, 500], [45, 100, 500]])('day %i -> vested %i%%, available %i', async (days, pct, avail) => {
+describe('vesting boundaries (30-day linear, genesis 700/300)', () => {
+  test.each([[0, 0, 0], [15, 50, 350], [30, 100, 700], [45, 100, 700]])('day %i -> vested %i%%, available %i', async (days, pct, avail) => {
     const id = await conv(`vest ${days}`, days);
     const res = await vesting(id);
     expect(Number(res.body.vested_pct)).toBeCloseTo(pct, 0);
     expect(Number(res.body.available_tokens)).toBeCloseTo(avail, 0);
-    expect(Number(res.body.locked_tokens)).toBeCloseTo(500 - avail, 0);
-    expect(Number(res.body.total_tokens)).toBe(500);
+    expect(Number(res.body.locked_tokens)).toBeCloseTo(700 - avail, 0);
+    expect(Number(res.body.total_tokens)).toBe(700);
   });
   test('day 3 is ~10% with 2-decimal rounding', async () => {
     const id = await conv('vest 3', 3);
@@ -59,10 +59,10 @@ describe('payout validation', () => {
     expect(ok.body.status).toBe('pending'); expect(Number(ok.body.amount)).toBe(300);
     const v = await vesting(id);
     expect(Number(v.body.paid_out_tokens)).toBe(300);
-    expect(Number(v.body.available_tokens)).toBe(200);
-    const over = await payout(id, 200.01).expect(400);
+    expect(Number(v.body.available_tokens)).toBe(400);
+    const over = await payout(id, 400.01).expect(400);
     expect(over.body.error).toMatch(/Already paid out: 300/);
-    await payout(id, 200).expect(201);
+    await payout(id, 400).expect(201);
     await payout(id, 0.01).expect(400);
     const led = (await db.query("SELECT count(*)::int n FROM mojomo.token_ledger WHERE conversation_id=$1 AND event_type='payout_initiated'", [id])).rows[0].n;
     expect(led).toBe(2);
@@ -72,14 +72,14 @@ describe('payout validation', () => {
   });
   test('half vested: can withdraw exactly the vested half, not a cent more', async () => {
     const id = await conv('pay half', 15);
-    await payout(id, 250.01).expect(400);
-    await payout(id, 250).expect(201);
+    await payout(id, 350.01).expect(400);
+    await payout(id, 350).expect(201);
     await payout(id, 0.01).expect(400);
   });
   test('co-creator has an independent balance', async () => {
     const id = await conv('pay both', 31);
-    await payout(id, 500, a1).expect(201);
-    await payout(id, 500, a2).expect(201);
+    await payout(id, 700, a1).expect(201);
+    await payout(id, 300, a2).expect(201);
     await payout(id, 1, a2).expect(400);
   });
   test('avatar not in conversation -> 404-class error', async () => {
@@ -90,22 +90,22 @@ describe('payout validation', () => {
 });
 
 describe('concurrent payouts cannot double-spend', () => {
-  test('5 simultaneous requests for 300 of 500 vested -> exactly one succeeds', async () => {
+  test('5 simultaneous requests for 300 of 700 vested -> exactly two succeed', async () => {
     const id = await conv('race', 31);
     const results = await Promise.all(Array.from({ length: 5 }, () => payout(id, 300)));
     const codes = results.map((r) => r.status).sort();
-    expect(codes.filter((c) => c === 201).length).toBe(1);
-    expect(codes.filter((c) => c === 400).length).toBe(4);
+    expect(codes.filter((c) => c === 201).length).toBe(2);
+    expect(codes.filter((c) => c === 400).length).toBe(3);
     const paid = (await db.query('SELECT COALESCE(SUM(token_amount),0)::float s FROM mojomo.payouts WHERE conversation_id=$1 AND avatar_id=$2', [id, a1])).rows[0].s;
-    expect(paid).toBe(300);
+    expect(paid).toBe(600);
   });
   test('20 simultaneous small payouts never exceed the vested total', async () => {
     const id = await conv('race small', 31);
     const results = await Promise.all(Array.from({ length: 20 }, () => payout(id, 50)));
     const ok = results.filter((r) => r.status === 201).length;
-    expect(ok).toBe(10); // 10 x 50 = 500 vested
+    expect(ok).toBe(14); // 14 x 50 = 700 vested
     const paid = (await db.query('SELECT COALESCE(SUM(token_amount),0)::float s FROM mojomo.payouts WHERE conversation_id=$1 AND avatar_id=$2', [id, a1])).rows[0].s;
-    expect(paid).toBe(500);
+    expect(paid).toBe(700);
   });
 });
 
@@ -138,8 +138,8 @@ describe('forfeiture and ended-conversation rules', () => {
     await db.query("UPDATE mojomo.conversations SET created_at = NOW() - interval '45 days', ended_at = NOW() - interval '30 days' WHERE id = $1", [id]);
     const v = await vesting(id);
     expect(Number(v.body.vested_pct)).toBeCloseTo(50, 0);
-    expect(Number(v.body.available_tokens)).toBeCloseTo(250, 0);
-    await payout(id, 250).expect(201);      // vested share is still payable after end
+    expect(Number(v.body.available_tokens)).toBeCloseTo(350, 0);
+    await payout(id, 350).expect(201);      // vested share is still payable after end
     await payout(id, 0.01).expect(400);     // the forfeited half is not
   });
   test('ended conversation rejects messages, reasoning, specialist joins and a second end (409)', async () => {
@@ -189,7 +189,7 @@ describe('specialists are a roadmap item', () => {
     process.env.SPECIALISTS_ENABLED = prev;
     const own = await request(app).get(`/api/conversations/${id}/ownership`).expect(200);
     const ledger = own.body.ownership_ledger || own.body.ownership || own.body;
-    expect(Number(ledger[a1].ownership_pct)).toBeCloseTo(42.5, 2);
-    expect(Number(ledger[spec].ownership_pct)).toBeCloseTo(15, 2);
+    expect(Number(ledger[a1].ownership_pct)).toBeCloseTo(56, 2);
+    expect(Number(ledger[spec].ownership_pct)).toBeCloseTo(20, 2);
   });
 });

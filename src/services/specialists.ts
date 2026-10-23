@@ -4,7 +4,11 @@ import * as crc from 'crc';
 import * as conversationService from './conversations';
 import { OwnershipLedger, SpecialistJoinResult } from '../types';
 
-const DILUTION_RATE = 0.15; // 15% extracted from A+B per specialist join
+// Policy (2026-10-23): further team members share a pool capped at 20% of the
+// conversation. Each member gets an equal slice of that pool. Only the creator and
+// co-creator are diluted to fund it, and they are diluted proportionally so their
+// 70:30 ratio is preserved. Existing team members are never diluted.
+export const TEAM_POOL_PCT = 20.0;
 
 /**
  * Execute specialist join with dilution model
@@ -69,23 +73,27 @@ export async function executeSpecialistJoinWithDilution(
 
     const join_round = current_specialist_count + 1;
 
-    // Calculate extraction amounts (15% from each)
-    const initiator_extracted = initiator_data.ownership_pct * DILUTION_RATE;
-    const target_extracted = target_data.ownership_pct * DILUTION_RATE;
-    const total_extracted = initiator_extracted + target_extracted;
+    // The team pool is capped at TEAM_POOL_PCT. Every team member (including the
+    // one joining now) holds an equal slice of it. Only the creator and co-creator
+    // fund the pool, diluted proportionally so their ratio is preserved.
+    const member_count_after = current_specialist_count + 1;
+    const specialist_pct = TEAM_POOL_PCT / member_count_after;
 
-    // Calculate new ownership percentages
-    const initiator_new_pct = initiator_data.ownership_pct - initiator_extracted;
-    const target_new_pct = target_data.ownership_pct - target_extracted;
-    const specialist_pct = total_extracted;
+    // Creator and co-creator together hold whatever the pool does not.
+    const founders_total_pct = 100 - TEAM_POOL_PCT;
+    const founders_ratio = initiator_data.ownership_pct /
+      (initiator_data.ownership_pct + target_data.ownership_pct);
+    const initiator_new_pct = founders_total_pct * founders_ratio;
+    const target_new_pct = founders_total_pct * (1 - founders_ratio);
 
     // Verify math (ownership must sum to 100%)
     let total_pct = initiator_new_pct + target_new_pct + specialist_pct;
 
-    // Add other specialists' ownership (unchanged)
+    // Existing team members are re-sliced to the new equal share. They are not
+    // diluted by the join - the pool simply divides more ways.
     for (const [avatar_id, data] of Object.entries(current_ownership)) {
       if (avatar_id !== initiator_id && avatar_id !== target_id) {
-        total_pct += (data as any).ownership_pct;
+        total_pct += specialist_pct;
       }
     }
 
@@ -101,9 +109,19 @@ export async function executeSpecialistJoinWithDilution(
     const target_tokens = (target_new_pct / 100) * total_tokens;
     const specialist_tokens = (specialist_pct / 100) * total_tokens;
 
-    // Build updated ownership ledger
-    const updated_ownership: OwnershipLedger = {
-      ...current_ownership,
+    // Build updated ownership ledger. Existing team members are re-sliced to the
+    // new equal share so the pool always divides evenly.
+    const updated_ownership: OwnershipLedger = { ...current_ownership };
+    for (const [avatar_id, data] of Object.entries(current_ownership)) {
+      if (avatar_id !== initiator_id && avatar_id !== target_id) {
+        updated_ownership[avatar_id] = {
+          ...(data as any),
+          ownership_pct: specialist_pct,
+          token_balance: specialist_tokens,
+        };
+      }
+    }
+    Object.assign(updated_ownership, {
       [initiator_id]: {
         ...initiator_data,
         ownership_pct: initiator_new_pct,
@@ -121,7 +139,7 @@ export async function executeSpecialistJoinWithDilution(
         buy_in_amount: 0,
         join_round: join_round,
       },
-    };
+    });
 
     // Update conversation with new ledger
     await client.query(

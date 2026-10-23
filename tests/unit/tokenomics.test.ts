@@ -7,13 +7,13 @@ describe('Tokenomics: Genesis Allocation', () => {
   const avatar_b = 'avatar-b-id';
   const total_tokens = 1000;
 
-  it('should allocate 50/50 split', () => {
+  it('should allocate 70/30 split (creator / co-creator)', () => {
     const ledger = allocateGenesisTokens(avatar_a, avatar_b, total_tokens);
 
-    expect(ledger[avatar_a].ownership_pct).toBe(50);
-    expect(ledger[avatar_b].ownership_pct).toBe(50);
-    expect(ledger[avatar_a].token_balance).toBe(500);
-    expect(ledger[avatar_b].token_balance).toBe(500);
+    expect(ledger[avatar_a].ownership_pct).toBe(70);
+    expect(ledger[avatar_b].ownership_pct).toBe(30);
+    expect(ledger[avatar_a].token_balance).toBe(700);
+    expect(ledger[avatar_b].token_balance).toBe(300);
   });
 
   it('should sum to exactly 100%', () => {
@@ -104,44 +104,46 @@ describe('Tokenomics: Dilution Model Simulation', () => {
       },
     };
 
-    const DILUTION_RATE = 0.15; // 15% extracted per specialist
+    // Policy (2026-10-23): team pool capped at 20%, split equally among members.
+    // Only A and B fund it, diluted proportionally so their ratio is preserved.
+    const TEAM_POOL_PCT = 20;
 
     for (let i = 1; i <= numSpecialists; i++) {
-      const a_entry = ledger['A'];
-      const b_entry = ledger['B'];
+      const member_count = i;
+      const per_member = TEAM_POOL_PCT / member_count;
 
-      const a_extracted = a_entry.ownership_pct * DILUTION_RATE;
-      const b_extracted = b_entry.ownership_pct * DILUTION_RATE;
-      const total_extracted = a_extracted + b_extracted;
-
-      // Update A and B
-      ledger['A'].ownership_pct = a_entry.ownership_pct - a_extracted;
+      // A and B together hold whatever the pool does not, in their original ratio.
+      const founders_total = 100 - TEAM_POOL_PCT;
+      const ratio = ledger['A'].ownership_pct /
+        (ledger['A'].ownership_pct + ledger['B'].ownership_pct);
+      ledger['A'].ownership_pct = founders_total * ratio;
       ledger['A'].token_balance = ledger['A'].ownership_pct * 10;
-
-      ledger['B'].ownership_pct = b_entry.ownership_pct - b_extracted;
+      ledger['B'].ownership_pct = founders_total * (1 - ratio);
       ledger['B'].token_balance = ledger['B'].ownership_pct * 10;
 
-      // Add specialist
-      ledger[`S${i}`] = {
-        ownership_pct: total_extracted,
-        token_balance: total_extracted * 10,
-        vested_pct: 0,
-        buy_in_amount: 0,
-        join_round: i,
-      };
+      // Every member, old and new, holds an equal slice.
+      for (let j = 1; j <= i; j++) {
+        ledger[`S${j}`] = {
+          ownership_pct: per_member,
+          token_balance: per_member * 10,
+          vested_pct: 0,
+          buy_in_amount: 0,
+          join_round: j,
+        };
+      }
     }
 
     return ledger;
   }
 
   it('should sum to 100% with 1 specialist', () => {
-    const ledger = simulateDilution(50, 50, 1);
+    const ledger = simulateDilution(70, 30, 1);
     expect(validateOwnershipSum(ledger)).toBe(true);
 
     const expected = {
-      A: 42.5,
-      B: 42.5,
-      S1: 15,
+      A: 56,
+      B: 24,
+      S1: 20,
     };
     expect(ledger['A'].ownership_pct).toBeCloseTo(expected.A, 10);
     expect(ledger['B'].ownership_pct).toBeCloseTo(expected.B, 10);
@@ -170,23 +172,24 @@ describe('Tokenomics: Dilution Model Simulation', () => {
     expect(totalOwnership).toBeCloseTo(100, 8);
   });
 
-  it('should keep earlier specialists constant as new ones join', () => {
+  it('should re-slice earlier specialists as new ones join', () => {
     const ledger5 = simulateDilution(50, 50, 5);
     const s1_after_5 = ledger5['S1'].ownership_pct;
 
     const ledger10 = simulateDilution(50, 50, 10);
     const s1_after_10 = ledger10['S1'].ownership_pct;
 
-    // S1 should have same ownership regardless of how many more join
-    expect(s1_after_5).toBeCloseTo(s1_after_10, 10);
-    expect(s1_after_5).toBeCloseTo(15, 10); // S1 always gets exactly 15%
+    // The pool divides more ways, so an earlier member's slice shrinks.
+    expect(s1_after_5).toBeCloseTo(4, 10);   // 20 / 5
+    expect(s1_after_10).toBeCloseTo(2, 10);  // 20 / 10
   });
 
-  it('should decrease A and B equally', () => {
-    const ledger = simulateDilution(50, 50, 10);
+  it('should dilute A and B proportionally, preserving their ratio', () => {
+    const ledger = simulateDilution(70, 30, 10);
 
-    // A and B should always have same ownership
-    expect(ledger['A'].ownership_pct).toBeCloseTo(ledger['B'].ownership_pct, 10);
+    // A and B together hold 80%, still in a 70:30 ratio -> 56 / 24
+    expect(ledger['A'].ownership_pct).toBeCloseTo(56, 10);
+    expect(ledger['B'].ownership_pct).toBeCloseTo(24, 10);
   });
 
   it('should decrease specialist allocation as more join', () => {
@@ -194,15 +197,14 @@ describe('Tokenomics: Dilution Model Simulation', () => {
 
     const allocations = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => ledger[`S${i}`]?.ownership_pct || 0);
 
-    // Each specialist should get less than previous
+    // All members hold an equal slice of the pool, so every allocation matches.
     for (let i = 1; i < allocations.length; i++) {
-      expect(allocations[i]).toBeLessThan(allocations[i - 1]);
+      expect(allocations[i]).toBeCloseTo(allocations[i - 1], 10);
     }
 
-    // Verify exact sequence from spec
-    expect(allocations[0]).toBeCloseTo(15, 10); // S1 gets 15%
-    expect(allocations[1]).toBeCloseTo(12.75, 10); // S2 gets 12.75%
-    expect(allocations[2]).toBeCloseTo(10.8375, 10); // S3
+    // With 10 members the pool divides into 10 equal slices of 2%.
+    expect(allocations[0]).toBeCloseTo(2, 10);
+    expect(allocations[9]).toBeCloseTo(2, 10);
   });
 
   it('should work with any starting A/B ratio', () => {
@@ -251,13 +253,13 @@ describe('Tokenomics: Edge Cases', () => {
   it('should handle very large token amounts', () => {
     const ledger = allocateGenesisTokens('a', 'b', 1000000000);
     expect(validateOwnershipSum(ledger)).toBe(true);
-    expect(ledger['a'].ownership_pct).toBe(50);
-    expect(ledger['b'].ownership_pct).toBe(50);
+    expect(ledger['a'].ownership_pct).toBe(70);
+    expect(ledger['b'].ownership_pct).toBe(30);
   });
 
   it('should handle very small token amounts', () => {
     const ledger = allocateGenesisTokens('a', 'b', 0.01);
     expect(validateOwnershipSum(ledger)).toBe(true);
-    expect(ledger['a'].ownership_pct).toBe(50);
+    expect(ledger['a'].ownership_pct).toBe(70);
   });
 });

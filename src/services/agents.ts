@@ -112,12 +112,17 @@ export async function registerAgent(input: {
 
   if (prior.rows.length > 0) {
     // Existing live invite: we cannot recover its raw token (only the hash is
-    // stored), so rotate it. The old link stops working, which is the correct
-    // outcome — a re-registration invalidates the previous link.
+    // stored), so rotate it. The superseded hash is pushed onto
+    // token_hash_history so the link already sitting in the human's inbox keeps
+    // working. Rotating without that history is what produced "Invitation not
+    // found" for anyone whose agent retried registration.
     invId = prior.rows[0].id;
     inviteExpiresAt = new Date(prior.rows[0].expires_at);
     await db.query(
-      `UPDATE agent.invitations SET token_hash=$1 WHERE id=$2`,
+      `UPDATE agent.invitations
+          SET token_hash_history = array_append(token_hash_history, token_hash),
+              token_hash = $1
+        WHERE id = $2`,
       [hashToken(token), invId]
     );
   } else {
@@ -220,14 +225,24 @@ export async function getInvitationById(id: string) {
   return res.rows[0] || null;
 }
 
-/** Look up a pending invitation by raw token. */
+/**
+ * Look up an invitation by raw token.
+ *
+ * Matches the current token_hash or any superseded hash in token_hash_history.
+ * Re-registration rotates the current token, and without the history check that
+ * rotation silently killed links already delivered to a human's inbox — they
+ * rendered "Invitation not found". Single-use is unaffected: the invitation row
+ * is what gets consumed, so accepting once invalidates every link for it.
+ */
 export async function getInvitation(token: string) {
+  const h = hashToken(token);
   const res = await db.query(
     `SELECT i.*, a.handle, a.display_name, a.description, a.operator_name, a.model_family
        FROM agent.invitations i
        JOIN agent.agents a ON a.id = i.agent_id
-      WHERE i.token_hash = $1`,
-    [hashToken(token)]
+      WHERE i.token_hash = $1 OR $1 = ANY(i.token_hash_history)
+      LIMIT 1`,
+    [h]
   );
   return res.rows[0] || null;
 }

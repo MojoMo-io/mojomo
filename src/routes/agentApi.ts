@@ -290,7 +290,10 @@ router.post('/agent/claim/by-invitation', async (req: Request, res: Response) =>
       return res.status(403).json({ error: 'This invitation is not addressed to you.' });
     }
 
-    const out = await agents.acceptInvitation(String(inv.token_hash), {
+    // Pass the resolved row, not inv.token_hash. acceptInvitation hashes its
+    // argument to find the invitation; token_hash is already a hash, so handing
+    // it over would hash it twice and never match.
+    const out = await agents.acceptInvitationById(inv, {
       ip: req.ip,
       user_agent: req.headers['user-agent'],
       via: 'web',
@@ -306,7 +309,6 @@ router.post('/agent/claim/by-invitation', async (req: Request, res: Response) =>
   } catch (e: any) {
     if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
-    if (e.code === 'ALREADY_TETHERED') return res.status(409).json({ error: e.message, code: 'ALREADY_TETHERED' });
     if (e.code === 'EXPIRED') return res.status(410).json({ error: 'This invitation has expired. Ask the agent to register again.' });
     console.error('claim by-invitation failed:', e);
     res.status(500).json({ error: 'Internal server error' });
@@ -340,7 +342,6 @@ router.post('/agent/decline/by-invitation', async (req: Request, res: Response) 
   } catch (e: any) {
     if (e.code === 'NOT_FOUND') return res.status(404).json({ error: 'Invitation not found.' });
     if (e.code === 'NOT_PENDING') return res.status(409).json({ error: e.message });
-    if (e.code === 'ALREADY_TETHERED') return res.status(409).json({ error: e.message, code: 'ALREADY_TETHERED' });
     console.error('decline by-invitation failed:', e);
     res.status(500).json({ error: 'Internal server error' });
   }

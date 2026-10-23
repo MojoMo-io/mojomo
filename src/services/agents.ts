@@ -251,6 +251,80 @@ export async function getInvitation(token: string) {
  * Human accepts the invitation. This is the tethering step.
  * Creates (or reuses) the human's user account, activates the agent, issues a key.
  */
+/**
+ * Accept an invitation the caller has ALREADY resolved by id.
+ *
+ * `acceptInvitation` takes a raw token and hashes it to find the invitation.
+ * Callers that hold the invitation row (the session-authenticated
+ * /invitations list) must not pass `inv.token_hash` into it — that value is
+ * already hashed, so it would be hashed a second time and never match. This
+ * entry point skips the lookup and goes straight to the tethering act.
+ */
+export async function acceptInvitationById(
+  inv: any,
+  meta: {
+    ip?: string; user_agent?: string; via?: 'web' | 'email' | 'agent';
+    identity_via?: 'session' | 'claim_link';
+  }
+): Promise<{ agent: AgentRow; api_key: string; scopes: Scope[] }> {
+  if (!inv) throw Object.assign(new Error('Invitation not found'), { code: 'NOT_FOUND' });
+  if (inv.status !== 'pending') throw Object.assign(new Error(`Invitation already ${inv.status}`), { code: 'NOT_PENDING' });
+  if (new Date(inv.expires_at) < new Date()) {
+    await db.query(`UPDATE agent.invitations SET status='expired' WHERE id=$1`, [inv.id]);
+    throw Object.assign(new Error('Invitation expired'), { code: 'EXPIRED' });
+  }
+
+  const existing = await db.query(
+    `SELECT status, tether_user_id FROM agent.agents WHERE id=$1`,
+    [inv.agent_id]
+  );
+  const cur = existing.rows[0];
+  if (cur && cur.status === 'active' && cur.tether_user_id) {
+    throw Object.assign(
+      new Error('This agent is already tethered to a human. Nothing to accept.'),
+      { code: 'ALREADY_TETHERED' }
+    );
+  }
+
+  let userRes = await db.query('SELECT id FROM mojomo.users WHERE email = $1', [inv.human_email]);
+  let userId: string;
+  if (userRes.rows.length > 0) {
+    userId = userRes.rows[0].id;
+  } else {
+    const created = await db.query(
+      'INSERT INTO mojomo.users (id, email) VALUES (gen_random_uuid(), $1) RETURNING id',
+      [inv.human_email]
+    );
+    userId = created.rows[0].id;
+  }
+
+  const agentRes = await db.query(
+    `UPDATE agent.agents
+        SET status='active', tether_user_id=$1, tether_verified_at=now(), updated_at=now()
+      WHERE id=$2 RETURNING *`,
+    [userId, inv.agent_id]
+  );
+  const agent = agentRes.rows[0] as AgentRow;
+
+  await db.query(
+    `UPDATE agent.invitations
+        SET status='accepted', accepted_at=now(), accepted_ip=$1,
+            accepted_via=$2, accepted_user_agent=$3
+      WHERE id=$4`,
+    [meta.ip || null, meta.via || 'web', meta.user_agent || null, inv.id]
+  );
+
+  await db.query(
+    `INSERT INTO agent.tether_events (agent_id, invitation_id, event, via, ip, user_agent, detail)
+     VALUES ($1,$2,'accepted',$3,$4,$5,$6)`,
+    [agent.id, inv.id, meta.via || 'web', meta.ip || null, meta.user_agent || null,
+     JSON.stringify({ identity_via: meta.identity_via || 'session' })]
+  );
+
+  const { api_key, scopes } = await issueKey(agent.id, DEFAULT_SCOPES, 'initial');
+  return { agent, api_key, scopes };
+}
+
 export async function acceptInvitation(
   token: string,
   meta: {

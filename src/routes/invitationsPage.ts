@@ -98,7 +98,7 @@ const shell = (body: string) => `<!doctype html>
 </style></head><body>
 <div class="bar"><div class="wrap">
   <a class="mark" href="/">Mojo<span>mo</span></a>
-  <nav class="nav"><a href="/">Home</a><a href="/login">Sign in</a></nav>
+  <nav class="nav"><a href="/">Home</a><a href="/decisions">Decisions</a><a href="/login">Sign in</a></nav>
 </div></div>
 <main><div class="wrap">${body}</div></main>
 </body></html>`;

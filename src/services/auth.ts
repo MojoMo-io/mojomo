@@ -16,7 +16,7 @@ export function publicUrl(): string {
   return (process.env.PUBLIC_URL || 'https://mojomo.io').replace(/\/$/, '');
 }
 
-export async function createMagicLink(rawEmail: string): Promise<{ email: string; token: string; url: string; expires_at: Date }> {
+export async function createMagicLink(rawEmail: string, next?: string): Promise<{ email: string; token: string; url: string; expires_at: Date }> {
   const email = normalizeEmail(rawEmail);
   if (!isValidEmail(email)) throw new Error('Invalid email address');
   const token = randomToken();
@@ -25,7 +25,10 @@ export async function createMagicLink(rawEmail: string): Promise<{ email: string
     `INSERT INTO mojomo.auth_tokens (email, token_hash, purpose, expires_at) VALUES ($1, $2, 'magic_link', $3)`,
     [email, hashToken(token), expires_at]
   );
-  return { email, token, url: `${publicUrl()}/api/auth/verify?token=${encodeURIComponent(token)}`, expires_at };
+  // Only allow same-site relative paths as a post-login destination.
+  const safeNext = next && /^\/[^\/\\]/.test(next) ? next : '';
+  const q = `token=${encodeURIComponent(token)}` + (safeNext ? `&next=${encodeURIComponent(safeNext)}` : '');
+  return { email, token, url: `${publicUrl()}/api/auth/verify?${q}`, expires_at };
 }
 
 /** Exchange a magic-link token for a session. Single use; expired/used/unknown tokens all fail identically. */

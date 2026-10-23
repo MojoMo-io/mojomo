@@ -4,6 +4,7 @@
 // silently until you happen to visit /decisions is a request you will miss.
 import * as db from './db';
 import * as telegram from './telegram';
+import * as auth from './auth';
 
 const BASE = process.env.PUBLIC_BASE_URL || 'https://mojomo.io';
 
@@ -45,7 +46,20 @@ export async function notifyIfUrgent(req: any): Promise<boolean> {
     esc(req.title),
   ];
   if (req.body) lines.push('', esc(String(req.body).slice(0, 400)));
-  lines.push('', `[Answer in your inbox](${BASE}/decisions)`);
+  // A one-time login link, so tapping from Telegram lands on the decision
+  // already signed in. Falls back to the plain page if minting fails.
+  let link = `${BASE}/decisions`;
+  try {
+    const u = await db.query(`SELECT email FROM mojomo.users WHERE id=$1`, [req.tether_user_id]);
+    const email = u.rows[0]?.email;
+    if (email) {
+      const ml = await auth.createMagicLink(email, '/decisions');
+      link = ml.url;
+    }
+  } catch (e: any) {
+    console.error('decision notify: could not mint login link:', e?.message || e);
+  }
+  lines.push('', `[Answer this](${link})`);
 
   // Sent from the agent bot when one is configured, so agent questions do not
   // arrive from the human's personal assistant.

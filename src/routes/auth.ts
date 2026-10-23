@@ -54,7 +54,10 @@ router.get('/auth/verify', async (req: Request, res: Response) => {
     if (req.accepts(['html', 'json']) === 'json' && !req.headers.accept?.includes('text/html')) {
       return res.json({ ok: true, user_id: s.userId, email: s.email, expires_at: s.expires_at });
     }
-    res.redirect(302, '/');
+    // Honour a same-site destination so a link from Telegram lands where it meant to.
+    const next = String(req.query.next || '');
+    const safeNext = /^\/[^\/\\]/.test(next) ? next : '/';
+    res.redirect(302, safeNext);
   } catch (error: any) {
     metrics.loginAttempts.inc({ result: 'bad_link' });
     if (req.headers.accept?.includes('application/json')) return res.status(400).json({ error: 'Invalid or expired link' });

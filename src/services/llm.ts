@@ -82,7 +82,9 @@ async function callDeepSeek(req: LlmRequest): Promise<LlmResponse> {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`DeepSeek ${res.status}: ${body.slice(0, 500)}`);
+      // Provider error bodies echo the key suffix back. Scrub before this
+      // string can reach a log, an API response, or a chat message.
+      throw new Error(`DeepSeek ${res.status}: ${scrubSecrets(body.slice(0, 500))}`);
     }
 
     const data: any = await res.json();
@@ -102,6 +104,23 @@ async function callDeepSeek(req: LlmRequest): Promise<LlmResponse> {
 }
 
 /** One model call. Retries transient failures with exponential backoff. */
+const SECRET_PATTERNS: RegExp[] = [
+  /sk-[A-Za-z0-9_-]{8,}/g,
+  /\b\d{8,12}:[A-Za-z0-9_-]{30,}\b/g,
+  /\bmjm_[A-Za-z0-9_-]{8,}\b/g,
+  /(api[_-]?key\"?\s*[:=]\s*\"?)[^\s",}]+/gi,
+];
+
+/** Strip anything credential-shaped before an error string leaves the process. */
+export function scrubSecrets(text: string): string {
+  let out = String(text);
+  for (const pat of SECRET_PATTERNS) {
+    // Patterns with a capture group keep the label and redact only the value.
+    out = out.replace(pat, (m, g1) => (g1 ? `${g1}<redacted>` : '<redacted>'));
+  }
+  return out;
+}
+
 export async function complete(req: LlmRequest, maxAttempts = 3): Promise<LlmResponse> {
   let lastError: Error | null = null;
 

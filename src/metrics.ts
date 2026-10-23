@@ -8,7 +8,7 @@ client.collectDefaultMetrics({ register: registry, prefix: 'mojomo_' });
 export const metrics = {
   httpDuration: new client.Histogram({ name: 'mojomo_http_request_duration_seconds', help: 'HTTP request duration', labelNames: ['method', 'route', 'status'] as const, buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2, 5], registers: [registry] }),
   reasoningJobs: new client.Counter({ name: 'mojomo_reasoning_jobs_total', help: 'Reasoning jobs by outcome', labelNames: ['status'] as const, registers: [registry] }),
-  reasoningCost: new client.Counter({ name: 'mojomo_reasoning_cost_usd_total', help: 'Estimated Claude spend', registers: [registry] }),
+  reasoningCost: new client.Counter({ name: 'mojomo_reasoning_cost_usd_total', help: 'Estimated LLM spend', registers: [registry] }),
   ideasExtracted: new client.Counter({ name: 'mojomo_ideas_extracted_total', help: 'Ideas extracted from reflections', registers: [registry] }),
   ideasSurfaced: new client.Counter({ name: 'mojomo_ideas_surfaced_total', help: 'Ideas reaching mature', registers: [registry] }),
   magicLinks: new client.Counter({ name: 'mojomo_magic_links_total', help: 'Magic links issued', labelNames: ['provider', 'accepted'] as const, registers: [registry] }),

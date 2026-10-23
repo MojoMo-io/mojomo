@@ -5,7 +5,7 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
 ## Shipped
 - **Phase 1** — avatars, two-party conversations (creator = `initiator_avatar_id`, co-creator = `target_avatar_id`),
   50/50 genesis allocation, 30-day linear vesting, payout validation, forfeiture on early end, Telegram hooks.
-- **Phase 2** — Claude reasoning via job queue; results stored as `ai_response` messages; ideas extracted
+- **Phase 2** — LLM reasoning via job queue (DeepSeek; Anthropic retired 2026-10-21); results stored as `ai_response` messages; ideas extracted
   automatically when `idea_score > 0.65`; idea repository with maturity stages.
 - **Phase 3 (two-party scope)** — vesting boundary tests, atomic payouts (no double-spend), vesting frozen at
   `ended_at`, ended-conversation guards (409), scheduled 90-day dormancy sweep, load test.
@@ -19,7 +19,7 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
   Playwright browser E2E.
 
 ## Deferred: the token economy
-**Decision (2026-09-03):** the first build ships **without tokens** — avatars, two-party conversations, Claude
+**Decision (2026-09-03):** the first build ships **without tokens** — avatars, two-party conversations, LLM
 reflection, idea extraction and gated idea maturity. "Get the model right first"; the economy comes after.
 
 What exists already (kept, tested with `TOKENS_ENABLED=true` in `tests/setup-env.ts`, disabled by default):
@@ -57,4 +57,4 @@ concurrent-join load testing, and whether specialists may end a conversation.
 ## Next
 - **Token economy** — enable `TOKENS_ENABLED`, define idea payouts (see above), UI for allocation/vesting/payouts.
 - **Phase 5** — Stripe, `llms.txt` agent discoverability, Prometheus/Grafana, OWASP/security tests, GA.
-- Housekeeping — branch coverage (payouts/forfeiture), Playwright E2E, rotate the Claude key shared with Premonitia.
+- Housekeeping — branch coverage (payouts/forfeiture), Playwright E2E.

@@ -1,7 +1,7 @@
 // Sprint 11.4 — idea payouts in MOJO.
 //
 // An idea that earns a payout is paid in MOJO, drawn from the float. While the
-// project is in MGP the payout is recorded and the float is decremented in the
+// project is in MVP the payout is recorded and the float is decremented in the
 // ledger, but nothing moves on-chain. At go-live, paid payouts settle to wallet
 // addresses.
 //
@@ -10,6 +10,7 @@
 
 import * as db from './db';
 import { activeChain, isLedgerOnly } from './wallet';
+import { resolveAvatarPayoutAddress } from './userWallets';
 
 export class PayoutRefused extends Error {
   constructor(public code: string, message: string) {
@@ -28,7 +29,7 @@ export interface IdeaPayout {
 }
 
 /**
- * Pay an idea in MOJO. Ledger-only while in MGP.
+ * Pay an idea in MOJO. Ledger-only while in MVP.
  */
 export async function payIdea(input: {
   idea_id: string;
@@ -44,7 +45,13 @@ export async function payIdea(input: {
   const chain = activeChain().name;
   const ledgerOnly = isLedgerOnly();
 
-  if (!ledgerOnly && !input.recipient_address) {
+  // Resolve the address before refusing: prefer an explicit one, else the
+  // recipient avatar's owning user's default wallet for this chain.
+  let recipient = input.recipient_address || null;
+  if (!ledgerOnly && !recipient && input.recipient_avatar_id) {
+    recipient = await resolveAvatarPayoutAddress(input.recipient_avatar_id, chain);
+  }
+  if (!ledgerOnly && !recipient) {
     throw new PayoutRefused('NO_ADDRESS', 'On-chain settlement requires a recipient address');
   }
 
@@ -74,7 +81,7 @@ export async function payIdea(input: {
           chain, token_symbol, recipient_address)
        VALUES ($1,$2,$3,'mojo',$4,$5,'MOJO',$6) RETURNING *`,
       [input.conversation_id || null, input.recipient_avatar_id || null, amount,
-       ledgerOnly ? 'paid' : 'pending', chain, input.recipient_address || null]
+       ledgerOnly ? 'paid' : 'pending', chain, recipient]
     );
 
     await client.query('COMMIT');

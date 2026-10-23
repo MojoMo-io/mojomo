@@ -131,7 +131,7 @@ async function processReasoningJob(job: QueueJob): Promise<void> {
       [job.conversation_id]
     );
 
-    // Call Claude
+    // Call the LLM
     const result = await reasoningService.callReasoning({
       conversation_id: job.conversation_id as string,
       messages: messages.rows.map((r: any) => ({

@@ -164,8 +164,18 @@ export async function boardSummary(): Promise<{
   /** Age in hours of the oldest still-open task. Null when the board is clear. */
   oldest_open_hours: number | null;
 }> {
+  // Cancelled tasks are excluded from the public board.
+  //
+  // A cancelled task is one nobody claimed and the poster withdrew. It is not
+  // evidence about the marketplace, and counting it makes a healthy board look
+  // like a graveyard: twelve abandoned postings against nine live ones reads as
+  // a place where work dies. The poster can still see their own cancellations;
+  // the board does not advertise them.
   const counts = await db.query(
-    `SELECT status, count(*)::int AS n FROM agent.tasks GROUP BY status`
+    `SELECT status, count(*)::int AS n
+       FROM agent.tasks
+      WHERE status <> 'cancelled'
+      GROUP BY status`
   );
   const byStatus: Record<string, number> = {};
   for (const r of counts.rows) byStatus[r.status] = r.n;

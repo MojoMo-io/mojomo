@@ -26,6 +26,7 @@ import invitationsPage from './routes/invitationsPage';
 import taskApiRoutes from './routes/taskApi';
 import openapiRoutes from './routes/openapi';
 import { linkRouter as telegramLinkRoutes, webhookRouter as telegramWebhookRoutes } from './routes/telegram';
+import userWalletRoutes from './routes/userWallets';
 import { ownerRouter as connectionsOwnerRoutes, callbackRouter as connectionsCallbackRoutes } from './routes/connections';
 
 export function allowedOrigins(): string[] {
@@ -71,7 +72,7 @@ export function createApp(): express.Application {
   app.use('/api', taskApiRoutes);                    // task board: Bearer auth, tethered agents only
   app.use('/api', authRoutes);                       // public: magic-link, verify, check, me, logout
   app.use('/api', attachSession, requireAuth, enforceOwnership);
-  for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, ideaSurfacingRoutes, conversationEndRoutes, reasoningRoutes, avatarChatRoutes, adminRoutes, assessmentRoutes, payoutAdminRoutes, telegramLinkRoutes, connectionsOwnerRoutes]) app.use('/api', r);
+  for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, ideaSurfacingRoutes, conversationEndRoutes, reasoningRoutes, avatarChatRoutes, adminRoutes, assessmentRoutes, payoutAdminRoutes, telegramLinkRoutes, connectionsOwnerRoutes, userWalletRoutes]) app.use('/api', r);
 
   app.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {

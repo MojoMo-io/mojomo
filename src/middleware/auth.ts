@@ -72,8 +72,12 @@ export function validateIdParams(req: Request, res: Response, next: NextFunction
 
 /** Admin-only routes (support dashboard). Applied after requireAuth. */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // Defensive: this middleware is documented as "applied after requireAuth", but if it is
+  // ever mounted without it, req.auth is undefined and req.auth!.userId throws — turning a
+  // missing session into a 500 instead of a 401. Fail closed with the right status.
+  if (!req.auth) { res.status(401).json({ error: 'Authentication required', login: '/login' }); return; }
   try {
-    const r = await auth.isAdmin(req.auth!.userId);
+    const r = await auth.isAdmin(req.auth.userId);
     if (!r) { res.status(403).json({ error: 'Admin access required' }); return; }
     next();
   } catch (e) {

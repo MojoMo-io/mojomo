@@ -1,5 +1,5 @@
 // Avatar-to-avatar matchmaking. No embeddings/vector infra exists anywhere in this codebase and
-// avatar counts are small, so Claude itself is used as the matcher rather than bolting on a new
+// avatar counts are small, so the LLM itself is used as the matcher rather than bolting on a new
 // dependency - see plan doc. Revisit with real embeddings if the avatar count grows into the
 // thousands.
 import * as db from './db';

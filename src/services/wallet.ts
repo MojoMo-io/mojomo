@@ -7,11 +7,15 @@
 // This wallet holds a float that payouts draw from. Two rules, both deliberate:
 //
 //   1. It is a *hot* wallet. It holds only what payouts need, never treasury.
-//   2. It refuses to send while the project is in MGP. Ledger-only until
+//   2. It refuses to send while the project is in MVP. Ledger-only until
 //      go-live; the wallet stages, it does not settle.
 //
 // The private key is read from env and never logged, never returned, never
 // written to the database.
+//
+// MVP = Minimum Viable Product. MOJO_STAGE=mvp means pre-launch: the economy runs
+// entirely on the ledger and nothing moves on-chain. MOJO_STAGE=live enables
+// settlement. Any value other than 'live' is treated as MVP.
 
 import { JsonRpcProvider, Wallet, Contract, parseUnits, formatUnits, isAddress } from 'ethers';
 import * as db from './db';
@@ -54,7 +58,7 @@ export function activeChain(): ChainConfig {
 
 /** True while the project is pre-launch. Payouts are ledger-only. */
 export function isLedgerOnly(): boolean {
-  return (process.env.MOJO_STAGE || 'mgp').toLowerCase() !== 'live';
+  return (process.env.MOJO_STAGE || 'mvp').toLowerCase() !== 'live';
 }
 
 const ERC20_ABI = [
@@ -96,7 +100,7 @@ export async function onChainBalance(): Promise<{ chain: string; address: string
  */
 export async function sendMojo(to: string, amount: string): Promise<{ txHash: string; chain: string }> {
   if (isLedgerOnly()) {
-    throw new Error('Ledger-only: project is in MGP. On-chain settlement is disabled until go-live.');
+    throw new Error('Ledger-only: project is in MVP. On-chain settlement is disabled until go-live.');
   }
   if (!isAddress(to)) throw new Error('Invalid recipient address');
   const c = activeChain();

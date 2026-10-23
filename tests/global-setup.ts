@@ -53,6 +53,12 @@ const REQUIRED_TABLES = [
   'agent.audit',
   'agent.tether_events',
   'agent.funnel_events',
+  'agent.shares',
+  'agent.referral_codes',
+  'agent.referral_arrivals',
+  'agent.offers',
+  'agent.offer_impressions',
+  'agent.offer_redemptions',
 ];
 
 export default async function globalSetup() {

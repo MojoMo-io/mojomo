@@ -208,11 +208,11 @@ regressed the Phase 1 forfeiture authorization. They are preserved at tag
 - `POST /api/conversations/:id/reasoning` only enqueues (201). The job queue in
   `src/services/job-queue.ts` is the single processor (5 s poll, 5 concurrent, 3 attempts).
 - On completion `src/services/reasoning-outcome.ts` stores an `ai_response` message
-  (attributed to the initiator), and if Claude's `idea_score` > 0.65 calls
+  (attributed to the initiator), and if the LLM's `idea_score` > 0.65 calls
   `extractIdeaFromMessage` (spec Sprint 5.1). Extraction failure never fails the job.
 - All idea scores are 0..1 (`calculateIdeaScore`, API `idea_score`, `confidence_score`).
-- Env: `CLAUDE_API_KEY` (required), `CLAUDE_MODEL` (default `claude-sonnet-5`),
-  `CLAUDE_COST_INPUT_PER_MTOK` / `CLAUDE_COST_OUTPUT_PER_MTOK` (default 3 / 15).
+- Env: `DEEPSEEK_API_KEY` (required), `DEEPSEEK_MODEL` (default `deepseek-chat`).
+  Anthropic/Claude was retired 2026-10-21; DeepSeek is the only provider.
 - Load test (spec Layer 4): `npm run load-test` boots the API on :8999 against `mojomo_test`
   and asserts p50<100ms, p97.5<200ms, p99<500ms, errors<1% at 100 req/s.
 - Coverage: `npx jest --coverage` (84% statements at Phase 2 close; spec ≥80%).

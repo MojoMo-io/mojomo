@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as ideaPayouts from '../services/ideaPayouts';
 import * as wallet from '../services/wallet';
+import * as settlement from '../services/settlement';
 import { requireAdmin } from '../middleware/auth';
 
 const router = Router();
@@ -45,6 +46,21 @@ router.post('/admin/payouts', async (req: Request, res: Response) => {
     }
     res.status(500).json({ error: e.message });
   }
+});
+
+/**
+ * POST /admin/settlement/run — settle pending payouts.
+ *
+ * DRY RUN BY DEFAULT. Body { dry_run: false } is required to actually send.
+ * Refuses to send while the project is in MVP.
+ */
+router.post('/admin/settlement/run', async (req: Request, res: Response) => {
+  try {
+    const dryRun = req.body?.dry_run !== false;
+    const limit = Number(req.body?.limit) || 50;
+    const report = await settlement.settlePayouts({ dryRun, limit });
+    res.json({ ok: true, ...report });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 /** GET /admin/wallet — chain, address, ledger-only state. Never the key. */

@@ -1,10 +1,10 @@
 // In-character avatar replies (avatar-to-avatar) and the private human<->own-avatar assistant chat.
 // Generalizes what started as an NPC-only concept: every avatar (human-backed or NPC) speaks
-// through Claude using its own personality_profile/system_prompt, exactly like an NPC always did.
+// through the LLM using its own personality_profile/system_prompt, exactly like an NPC always did.
 import { complete } from './llm';
 import { Avatar } from '../types';
 
-/** Hard backstop so a Claude misfire can never produce an unbounded avatar-to-avatar exchange. */
+/** Hard backstop so an LLM misfire can never produce an unbounded avatar-to-avatar exchange. */
 export const MAX_CONVERSATION_TURNS = Number(process.env.AVATAR_CONVO_MAX_TURNS || 12);
 
 function avatarVoice(avatar: Avatar): string {

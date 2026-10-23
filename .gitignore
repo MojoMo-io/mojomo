@@ -23,3 +23,34 @@ coverage/
 .cache/
 temp/
 tmp/
+
+# --- secrets and local backups -------------------------------------------
+# .env backups and pre-rotation copies were sitting untracked in the repo root
+# with live tokens in them. They were never committed, but one `git add -A`
+# would have shipped them. Ignore the whole family, not just .env.
+.env.bak.*
+.env.pre-rotate.*
+.env.*.bak
+*.env.old
+env.*oldfile
+env.*_oldfile
+
+# Editor and tooling backups. These accumulated in src/ and migrations/ and
+# made `git status` unreadable, which is how real changes got lost in the noise.
+*.bak
+*.bak2
+*.bak.*
+*.orig
+*.rej
+*.swp
+*~
+
+# Local database and filesystem backups.
+backups/
+*.sql.gz
+*.dump
+
+# Anything that looks like a pasted credential.
+*key*.txt
+*secret*.txt
+*.bak2.*

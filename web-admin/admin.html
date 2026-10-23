@@ -66,6 +66,26 @@ label{display:block;margin-top:12px;font-size:11px;letter-spacing:.06em;text-tra
     <div class="note" id="supportResult"></div>
   </div>
 
+  <h2>Conversations &amp; transcripts</h2>
+  <div class="panel">
+    <button class="btn" id="convRefresh">Refresh conversations</button>
+    <div class="note" id="convErr"></div>
+    <table id="convTable"><thead><tr><th>Started</th><th>Initiator</th><th>Target</th><th>Status</th><th>Tokens</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="panel" id="transcriptPanel" style="display:none">
+    <h3 style="margin-top:0">Transcript <span class="chip" id="transcriptId"></span></h3>
+    <div id="transcript" style="max-height:520px;overflow:auto"></div>
+  </div>
+
+  <h2>Ownership ledger</h2>
+  <div class="panel">
+    <label>Avatar ID</label>
+    <input id="ledgerAvatarId" placeholder="Paste an avatar UUID">
+    <button class="btn" id="ledgerLoad">Load ledger</button>
+    <div class="note" id="ledgerErr"></div>
+    <div id="ledgerOut"></div>
+  </div>
+
   <h2>Matchmaking hints (platform-wide)</h2>
   <div class="panel"><table id="hintsTable"><thead><tr><th>Avatar</th><th>Suggested</th><th>Reason</th><th>Status</th></tr></thead><tbody></tbody></table></div>
 </div>
@@ -82,6 +102,7 @@ label{display:block;margin-top:12px;font-size:11px;letter-spacing:.06em;text-tra
   }
 
   async function init() {
+    loadConversations().catch(() => {});
     try { const me = await api('GET', '/api/auth/me'); $('whoami').textContent = me.email; }
     catch { return; }
     loadUsers(); loadNpcs(); loadHints();
@@ -146,6 +167,71 @@ label{display:block;margin-top:12px;font-size:11px;letter-spacing:.06em;text-tra
     try { const c = await api('POST', '/api/admin/support-conversations', { user_avatar_id: id }); box.textContent = `Started conversation ${c.id}`; }
     catch (e) { box.textContent = e.message; box.className = 'note err'; }
   };
+
+  // ---- conversations & transcripts ----
+  async function loadConversations() {
+    const tb = $('convTable').querySelector('tbody'); tb.innerHTML = '';
+    $('convErr').textContent = '';
+    let rows;
+    try { rows = await api('GET', '/api/admin/conversations'); }
+    catch (e) { $('convErr').textContent = e.message; return; }
+    for (const c of rows) {
+      const tr = document.createElement('tr');
+      const when = new Date(c.created_at).toLocaleString();
+      tr.innerHTML = `<td>${esc(when)}</td><td>${esc(c.initiator_name)}</td><td>${esc(c.target_name)}</td>
+        <td>${esc(c.status)}${c.involves_npc ? ' <span class="chip">NPC</span>' : ''}</td>
+        <td>${esc(c.total_tokens ?? '')}</td>
+        <td><button class="btn" data-view>View</button></td>`;
+      tr.querySelector('[data-view]').onclick = () => showTranscript(c.id);
+      tb.appendChild(tr);
+    }
+  }
+
+  async function showTranscript(convId) {
+    const panel = $('transcriptPanel'); panel.style.display = '';
+    $('transcriptId').textContent = convId;
+    const box = $('transcript'); box.innerHTML = '<div class="note">Loading…</div>';
+    let msgs;
+    try { msgs = await api('GET', `/api/admin/conversations/${convId}/messages`); }
+    catch (e) { box.innerHTML = `<div class="note err">${esc(e.message)}</div>`; return; }
+    if (!msgs.length) { box.innerHTML = '<div class="note">No messages yet.</div>'; return; }
+    box.innerHTML = msgs.map(m => {
+      const who = esc(m.avatar_name || 'unknown');
+      const tag = m.is_npc ? ' <span class="chip">NPC</span>' : '';
+      const kind = esc(m.message_type || '');
+      const when = new Date(m.created_at).toLocaleTimeString();
+      return `<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #eee">
+        <div class="note"><strong>${who}</strong>${tag} · ${kind} · ${esc(when)}</div>
+        <div style="white-space:pre-wrap">${esc(m.message_content)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  $('convRefresh').onclick = loadConversations;
+
+  // ---- ownership ledger ----
+  async function loadLedger() {
+    const id = $('ledgerAvatarId').value.trim();
+    $('ledgerErr').textContent = ''; $('ledgerOut').innerHTML = '';
+    if (!id) { $('ledgerErr').textContent = 'Paste an avatar UUID first.'; return; }
+    let rows;
+    try { rows = await api('GET', `/api/admin/avatars/${id}/ledger`); }
+    catch (e) { $('ledgerErr').textContent = e.message; return; }
+    if (!rows.length) { $('ledgerOut').innerHTML = '<div class="note">This avatar has no conversations.</div>'; return; }
+    $('ledgerOut').innerHTML = rows.map(r => {
+      const e = r.entry || {};
+      const pct = e.ownership_pct ?? '—';
+      const bal = e.token_balance ?? '—';
+      const vested = e.vested_pct ?? '—';
+      return `<div class="panel">
+        <strong>${esc(r.title || '(untitled)')}</strong> <span class="chip">${esc(r.status)}</span>
+        <div class="note">${esc(r.id)}</div>
+        <div>Ownership: <strong>${esc(pct)}%</strong> · Tokens: <strong>${esc(bal)}</strong> · Vested: <strong>${esc(vested)}%</strong></div>
+      </div>`;
+    }).join('');
+  }
+
+  $('ledgerLoad').onclick = loadLedger;
 
   async function loadHints() {
     const hints = await api('GET', '/api/admin/hints').catch(() => []);

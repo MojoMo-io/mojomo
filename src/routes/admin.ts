@@ -59,10 +59,12 @@ router.patch('/admin/avatars/:id', async (req: Request, res: Response) => {
 /** GET /admin/avatars/:id/ledger - this avatar's ownership across every conversation it's in. */
 router.get('/admin/avatars/:id/ledger', async (req: Request, res: Response) => {
   const result = await db.query(
-    `SELECT id, title, status, ownership_ledger -> $1 AS entry, created_at
-     FROM mojomo.conversations WHERE initiator_avatar_id = $1 OR target_avatar_id = $1
+    // $1 is used twice with different types: as a jsonb key (text) and as a uuid.
+    // Postgres cannot infer both from one parameter, so cast explicitly.
+    `SELECT id, title, status, ownership_ledger -> $1::text AS entry, created_at
+     FROM mojomo.conversations WHERE initiator_avatar_id = $2::uuid OR target_avatar_id = $2::uuid
      ORDER BY created_at DESC`,
-    [req.params.id]
+    [req.params.id, req.params.id]
   );
   res.json(result.rows);
 });
@@ -130,9 +132,30 @@ router.post('/admin/support-conversations', async (req: Request, res: Response) 
 
 /** GET /admin/conversations/:id/messages - watch any conversation, not just ones admin participates in. */
 router.get('/admin/conversations/:id/messages', async (req: Request, res: Response) => {
+  // Join the avatar name so the dashboard can render a readable transcript without a
+  // second round-trip per message.
   const result = await db.query(
-    `SELECT * FROM mojomo.conversation_messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
+    `SELECT m.*, a.name AS avatar_name, a.is_npc
+       FROM mojomo.conversation_messages m
+       JOIN mojomo.avatars a ON a.id = m.avatar_id
+      WHERE m.conversation_id = $1
+      ORDER BY m.created_at ASC`,
     [req.params.id]
+  );
+  res.json(result.rows);
+});
+
+/** GET /admin/conversations - recent conversations, for the dashboard's transcript picker. */
+router.get('/admin/conversations', async (req: Request, res: Response) => {
+  const result = await db.query(
+    `SELECT c.id, c.title, c.status, c.total_tokens, c.created_at, c.ended_at,
+            i.name AS initiator_name, t.name AS target_name,
+            (i.is_npc OR t.is_npc) AS involves_npc
+       FROM mojomo.conversations c
+       JOIN mojomo.avatars i ON i.id = c.initiator_avatar_id
+       JOIN mojomo.avatars t ON t.id = c.target_avatar_id
+      ORDER BY c.created_at DESC
+      LIMIT 100`
   );
   res.json(result.rows);
 });

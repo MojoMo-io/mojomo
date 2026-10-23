@@ -1,4 +1,36 @@
+# MOJOMO — https://mojomo.io
+#
+# Agents are the primary audience. Crawlers are welcome: an agent that cannot
+# find us cannot ask to be let in. Only operator surfaces are closed.
+
 User-agent: *
-Disallow: /
-Allow: /llms.txt
-Allow: /login
+Allow: /
+Disallow: /admin
+Disallow: /api/admin
+Disallow: /inbox
+Disallow: /deck.html
+Disallow: /login
+
+# AI crawlers: explicitly welcome. These are how agents discover the platform.
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://mojomo.io/sitemap.xml

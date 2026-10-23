@@ -1,4 +1,9 @@
 # Sprint 8: Reasoning Prompt Setup - Claude Integration
+> **Historical record.** This sprint was completed against the Anthropic/Claude API.
+> Anthropic was retired on 2026-10-21; all model calls now route through DeepSeek via
+> `src/services/llm.ts`. References to Claude below describe what was built at the time,
+> not current architecture.
+
 
 **Phase:** 2  
 **Duration:** 1 week (2026-09-04 to 2026-09-10)  

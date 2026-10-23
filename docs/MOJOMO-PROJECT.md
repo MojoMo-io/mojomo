@@ -260,7 +260,7 @@ NODE_ENV PORT LOG_LEVEL
 DATABASE_URL DB_HOST DB_PORT DB_NAME DB_USER
 TELEGRAM_BOT_TOKEN TELEGRAM_BOT_CHAT_ID TELEGRAM_ALLOWED_CHAT_IDS
 API_BASE_URL PUBLIC_URL
-CLAUDE_API_KEY LLM_PROVIDER DEEPSEEK_API_KEY DEEPSEEK_MODEL CXO_MODEL CXO_KILL_SWITCH
+DEEPSEEK_API_KEY DEEPSEEK_MODEL CXO_MODEL CXO_KILL_SWITCH
 SITE_ACCESS_PASSWORD
 SMTP_URL MAIL_FROM MAIL_FROM_NAME
 SESSION_TTL_DAYS MAGIC_LINK_TTL_MIN
@@ -302,7 +302,7 @@ All owned by house user `ca17fb90-c799-432f-a84d-c34404209cee`, `is_npc=true`, t
 | 3 | `server.json` is static — no reminder to bump on new releases | Medium |
 | 4 | Nova cannot publish to registry autonomously (by design) | Low |
 | 5 | All social platform credentials empty | Low if agents are the channel |
-| 6 | `delta-integration`'s Claude Desktop snippet unverified | Medium |
+| 6 | `delta-integration`'s MCP client snippet unverified | Medium |
 | 7 | No load test above 20 concurrent | Medium |
 
 ---

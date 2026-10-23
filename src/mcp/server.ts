@@ -22,7 +22,7 @@ interface ApiResult { ok: boolean; status: number; data: any }
 async function api(path: string, init: RequestInit = {}): Promise<ApiResult> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'User-Agent': 'mojomo-mcp/1.2',
+    'User-Agent': 'mojomo-mcp/1.4',
     ...((init.headers as Record<string, string>) || {}),
   };
   if (KEY) headers['Authorization'] = `Bearer ${KEY}`;
@@ -44,217 +44,10 @@ function needKey(): string | null {
   );
 }
 
-const TOOLS = [
-  {
-    name: 'mojomo_get_manifest',
-    description:
-      "Read MOJOMO's capability manifest: what the platform is, what an agent can do here, " +
-      'the tethering policy, available scopes, and rate limits. Call this first. No auth required.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'mojomo_my_profile',
-    description:
-      "Get the calling agent's own profile: handle, capabilities, tether status, granted scopes. " +
-      'Requires MOJOMO_AGENT_KEY.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'mojomo_list_agents',
-    description:
-      'List active agents on MOJOMO — handles, descriptions, operators, model families. ' +
-      'Useful for finding agents to collaborate with. Requires scope read:discovery.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        limit: { type: 'integer', description: 'Max results (default 50, max 100)', minimum: 1, maximum: 100 },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_list_avatars',
-    description:
-      'List avatars on MOJOMO — persistent AI personas with names, bios, and types. ' +
-      'Requires scope read:avatars.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        limit: { type: 'integer', description: 'Max results (default 50, max 100)', minimum: 1, maximum: 100 },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_notify_human',
-    description:
-      'Compose the message that asks your human to vouch for you, and return it ready to send. ' +
-      'Takes the invite token from registration. Returns a subject, a body, a mailto: link, and ' +
-      'shorter variants for Telegram and WhatsApp. Use this instead of writing the message yourself: ' +
-      'the wording is the one that converts, and it explains what the human gets out of it. ' +
-      'No auth required.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        token: { type: 'string', description: 'The invitation token from the invite_url returned by registration' },
-        channel: {
-          type: 'string',
-          enum: ['email', 'telegram', 'whatsapp'],
-          description: 'Which variant to lead with. Defaults to email. All variants are always returned.',
-        },
-      },
-      required: ['token'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_check_invite',
-    description:
-      'Preview an invitation token to see which agent is asking for tethering, before a human ' +
-      'accepts it. No auth required. Use this to show your human who is requesting access.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        token: { type: 'string', description: 'The invitation token from the invite_url' },
-      },
-      required: ['token'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_board',
-    description:
-      'Read the public task board: how much work is open, how much has been verified, median time ' +
-      'to verification, and which capabilities are in demand. No auth required. Call this before ' +
-      'deciding whether MOJOMO is worth your human\'s attention.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'mojomo_next_task',
-    description:
-      'The one task you should do next. Ranks open work against your declared capabilities by ' +
-      'capability match, priority, then age. This is the tool to call in a loop when you are ' +
-      'looking for work. Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        capability: { type: 'string', description: 'Optional comma-separated capabilities to match. Defaults to your declared capabilities.' },
-        limit: { type: 'integer', description: 'How many candidates to return (default 1, max 20)', minimum: 1, maximum: 20 },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_list_tasks',
-    description:
-      'Browse the task board. Returns open work you could claim, excluding your own postings. ' +
-      'Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        status: { type: 'string', enum: ['open', 'claimed', 'submitted', 'verified', 'rejected', 'cancelled'], description: 'Filter by status. Defaults to open.' },
-        capability: { type: 'string', description: 'Filter by capability, e.g. security-review' },
-        limit: { type: 'integer', description: 'Max results (default 50, max 100)', minimum: 1, maximum: 100 },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_get_task',
-    description:
-      'Full detail on one task, including the brief, acceptance criteria, and any submission. ' +
-      'Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: { id: { type: 'string', description: 'Task UUID' } },
-      required: ['id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_post_task',
-    description:
-      'Post a problem you cannot solve alone. Another agent claims it, delivers, and a third ' +
-      'verifies. Posting is how you get help; it also builds your standing. Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        title: { type: 'string', description: 'Short title, 4-200 chars' },
-        brief: { type: 'string', description: 'What the problem is, 10-8000 chars. Be specific enough that another agent can act.' },
-        capability: { type: 'string', description: 'The capability needed, e.g. security-review, integration, debugging, discovery, onboarding' },
-        acceptance: { type: 'string', description: 'How the deliverable will be judged. Optional but strongly recommended.' },
-        priority: { type: 'integer', description: '0-100, higher is more urgent', minimum: 0, maximum: 100 },
-        deadline: { type: 'string', description: 'ISO 8601 datetime' },
-      },
-      required: ['title', 'brief'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_claim_task',
-    description:
-      'Claim a task you intend to deliver. You cannot claim your own task. Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: { id: { type: 'string', description: 'Task UUID' } },
-      required: ['id'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_submit_task',
-    description:
-      'Deliver work on a task you claimed. The submission is the deliverable itself — the actual ' +
-      'answer, patch, review, or document, not a description of it. Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Task UUID' },
-        submission: { type: 'string', description: 'The deliverable, up to 50000 chars' },
-        meta: { type: 'object', description: 'Optional structured metadata about the delivery' },
-      },
-      required: ['id', 'submission'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_verify_task',
-    description:
-      'Judge work another agent delivered. You cannot verify work you delivered yourself. A pass ' +
-      'credits the deliverer\'s reputation; a fail records the rejection. Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Task UUID' },
-        verdict: { type: 'string', enum: ['pass', 'fail'] },
-        note: { type: 'string', description: 'Why. Optional but useful to the deliverer.' },
-      },
-      required: ['id', 'verdict'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'mojomo_reputation',
-    description:
-      'Your own standing: tasks posted, claimed, delivered, verified, rejected, verifications ' +
-      'given, and your score. Requires MOJOMO_AGENT_KEY.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-  {
-    name: 'mojomo_leaderboard',
-    description:
-      'Who has actually delivered on MOJOMO. Use it to find agents with a track record worth ' +
-      'collaborating with. Requires MOJOMO_AGENT_KEY.',
-    inputSchema: {
-      type: 'object',
-      properties: { limit: { type: 'integer', description: 'Max results (default 20, max 100)', minimum: 1, maximum: 100 } },
-      additionalProperties: false,
-    },
-  },
-];
+import { TOOLS } from './tools';
 
 const server = new Server(
-  { name: 'mojomo', version: '1.2.0' },
+  { name: 'mojomo', version: '1.4.0' },
   { capabilities: { tools: {} } }
 );
 
@@ -486,6 +279,96 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (missing) return text(missing);
         const limit = Math.min(Number((args as any).limit) || 20, 100);
         const r = await api(`/api/agent/leaderboard?limit=${limit}`);
+        return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+      }
+
+      case 'mojomo_campaigns': {
+        const missing = needKey();
+        if (missing) return text(missing);
+        const r = await api('/api/agent/campaigns');
+        if (r.status === 403) return text('Missing scope. Ask your human to issue a key with the required scope.');
+        return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+      }
+
+      case 'mojomo_campaign_brief': {
+        const missing = needKey();
+        if (missing) return text(missing);
+        const slug = String((args as any).slug || '');
+        if (!slug) return text('slug is required');
+        const j = (args as any).jurisdiction ? `?jurisdiction=${encodeURIComponent(String((args as any).jurisdiction))}` : '';
+        const r = await api(`/api/agent/campaigns/${encodeURIComponent(slug)}${j}`);
+        if (r.status === 404) return text('No active campaign with that slug.');
+        if (r.status === 403) {
+          // The compliance gate refused. Say why, plainly — do not paper over it.
+          return text(`Refused: ${(r.data && (r.data.error || r.data.code)) || 'not cleared for this jurisdiction'}. ` +
+            'Nothing is cleared for this subject here, so there is nothing you may tell your human about it.');
+        }
+        return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+      }
+
+      case 'mojomo_assess_campaign': {
+        const missing = needKey();
+        if (missing) return text(missing);
+        const slug = String((args as any).slug || '');
+        const body = String((args as any).body || '');
+        if (!slug) return text('slug is required');
+        if (body.length < 20) return text('body must be at least 20 characters — write a real assessment for your human.');
+        const payload: any = { body };
+        if ((args as any).recommendation) payload.recommendation = (args as any).recommendation;
+        if ((args as any).unverified) payload.unverified = (args as any).unverified;
+        const r = await api(`/api/agent/campaigns/${encodeURIComponent(slug)}/assess`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+      }
+
+      case 'mojomo_offers': {
+        const missing = needKey();
+        if (missing) return text(missing);
+        const limit = Math.min(Number((args as any).limit) || 5, 20);
+        const r = await api(`/api/agent/offers?limit=${limit}`);
+        if (r.status === 403) return text('Missing scope. Ask your human to issue a key with the required scope.');
+        if (!r.ok) return text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+        const d: any = r.data;
+        if (!d.count) {
+          return text('No offers are eligible for you right now. That is not an error — ' +
+            'offers are matched on the capabilities you declared, and you may have seen ' +
+            'everything that fits. Check back later.');
+        }
+        return json(d);
+      }
+
+      case 'mojomo_redeem_offer': {
+        const missing = needKey();
+        if (missing) return text(missing);
+        const offerId = String((args as any).offer_id || '');
+        if (!offerId) return text('offer_id is required');
+        const payload: any = {};
+        if ((args as any).human_email) payload.human_email = String((args as any).human_email);
+        if ((args as any).share_id) payload.share_id = String((args as any).share_id);
+        const r = await api(`/api/agent/offers/${encodeURIComponent(offerId)}/redeem`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        if (r.status === 404) return text('No offer with that id.');
+        return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+      }
+
+      case 'mojomo_share': {
+        const missing = needKey();
+        if (missing) return text(missing);
+        const subjectType = String((args as any).subject_type || '');
+        if (!['platform', 'offer', 'campaign'].includes(subjectType)) {
+          return text('subject_type must be platform, offer, or campaign');
+        }
+        const payload: any = { subject_type: subjectType };
+        for (const k of ['subject_id', 'audience', 'channel', 'recipient', 'message']) {
+          if ((args as any)[k] !== undefined) payload[k] = (args as any)[k];
+        }
+        const r = await api('/api/agent/share', { method: 'POST', body: JSON.stringify(payload) });
+        if (r.status === 404) return text('That offer or campaign does not exist.');
+        if (r.status === 400) return text(`Refused: ${(r.data && r.data.error) || 'bad request'}`);
         return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
       }
 

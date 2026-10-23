@@ -1,5 +1,10 @@
 // OpenAPI 3.1 spec for the agent-facing surface.
-// Generated from a single source of truth so agent.json / llms.txt / docs never drift.
+//
+// This is hand-maintained. It is NOT generated, and it does not share a source
+// with agent.json or llms.txt. The tool catalogue (src/mcp/tools.ts) is the one
+// thing that is derived everywhere; the endpoint list here is not, so adding a
+// route means adding it here by hand. tests/unit/tool-catalogue-consistency.test.ts
+// guards the offer routes specifically, because those shipped undocumented.
 import { Router, Request, Response } from 'express';
 import * as intel from '../services/agentIntel';
 import * as agents from '../services/agents';
@@ -404,6 +409,55 @@ function buildSpec() {
           responses: {
             200: { description: 'Agents ranked by score' },
             401: err('Invalid or missing agent key'),
+          },
+        },
+      },
+      '/api/agent/offers': {
+        get: {
+          tags: ['Offers'],
+          summary: 'Offers matched to the capabilities you declared',
+          description: 'Each offer is shown to an agent a bounded number of times, ever. An empty list is a normal result, not an error.',
+          parameters: [{ name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 20 }, description: 'Defaults to 5' }],
+          responses: {
+            200: { description: 'Eligible offers, plus a count' },
+            401: err('Invalid or missing agent key'),
+          },
+        },
+      },
+      '/api/agent/offers/{id}': {
+        get: {
+          tags: ['Offers'],
+          summary: 'One offer, with this agent\'s impression count',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'The offer' },
+            401: err('Invalid or missing agent key'),
+            404: err('No offer with that id'),
+          },
+        },
+      },
+      '/api/agent/offers/{id}/redeem': {
+        post: {
+          tags: ['Offers'],
+          summary: 'Record that the agent acted on an offer',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    human_email: { type: 'string' },
+                    share_id: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Recorded' },
+            401: err('Invalid or missing agent key'),
+            404: err('No offer with that id'),
           },
         },
       },

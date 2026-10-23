@@ -7,6 +7,8 @@ import * as agents from '../services/agents';
 import * as house from '../services/houseAgents';
 import * as db from '../services/db';
 import * as marketing from '../services/marketing';
+import * as shares from '../services/shares';
+import * as offers from '../services/offers';
 import { agentRateLimit } from '../middleware/agentRateLimit';
 
 async function requireAgent(req: Request, res: Response, next: Function) {
@@ -243,6 +245,121 @@ router.get('/agent/leaderboard', requireAgent, agentRateLimit, async (req: Reque
   try {
     const rows = await tasks.leaderboard(Number(req.query.limit) || 20);
     res.json({ ok: true, leaderboard: rows });
+  } catch (e: any) { err(res, e); }
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 11 — shares.
+//
+// One endpoint for every kind of share. The agent decides what is worth its
+// human's attention and how to deliver it; this records the intent and hands
+// back a link carrying the agent's referral code.
+// ---------------------------------------------------------------------------
+
+const ShareSchema = z.object({
+  subject_type: z.enum(['platform', 'offer', 'campaign']),
+  subject_id: z.string().uuid().optional(),
+  audience: z.enum(['human', 'agent', 'other']).optional(),
+  channel: z.string().max(40).optional(),
+  recipient: z.string().max(320).optional(),
+  message: z.string().max(4000).optional(),
+});
+
+router.post('/agent/share', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const parsed = ShareSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid share', detail: parsed.error.flatten() });
+    }
+    const out = await shares.recordShare({
+      agentId: (req as any).agent.id,
+      subjectType: parsed.data.subject_type,
+      subjectId: parsed.data.subject_id || null,
+      audience: parsed.data.audience,
+      channel: parsed.data.channel,
+      recipient: parsed.data.recipient,
+      message: parsed.data.message,
+    });
+    res.json({ ok: true, ...out });
+  } catch (e: any) {
+    if (e instanceof shares.ShareRefused) {
+      return res.status(400).json({ error: e.message, code: e.code });
+    }
+    err(res, e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 11 — offers, agent-facing.
+//
+// An offer is something a sponsor wants an agent to consider on its human's
+// behalf. The agent is not asked to sell it. It is asked whether it is worth its
+// human's attention. Every impression is recorded, and the per-agent cap is
+// enforced in the query, not in the client.
+// ---------------------------------------------------------------------------
+
+/** GET /agent/offers — what this agent is eligible for right now. */
+router.get('/agent/offers', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const agentId = (req as any).agent.id;
+    const profile = await offers.loadAgentProfile(agentId);
+    if (!profile) return res.status(404).json({ error: 'Agent not found' });
+
+    const limit = Math.min(Number(req.query.limit) || 5, 20);
+    const list = await offers.eligibleOffers(profile, limit);
+
+    // Record the impression at serve time. If we showed it, it counts.
+    for (const o of list) {
+      await offers.recordImpression(o.id, agentId, 'agent_offers');
+    }
+
+    res.json({
+      ok: true,
+      count: list.length,
+      offers: list.map((o) => ({
+        id: o.id,
+        sponsor_name: o.sponsor_name,
+        sponsor_url: o.sponsor_url,
+        title: o.title,
+        brief: o.brief,
+        value_prop: o.value_prop,
+        cta_url: o.cta_url,
+        cta_label: o.cta_label,
+        currency: o.currency,
+        price_cents: o.price_cents,
+      })),
+      instructions:
+        'Assess each offer against your human\'s interests and report back. ' +
+        'You are not being asked to sell it. Say plainly what you could not verify.',
+    });
+  } catch (e: any) { err(res, e); }
+});
+
+/** GET /agent/offers/:id — one offer, with this agent's impression count. */
+router.get('/agent/offers/:id', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const out = await offers.getOfferForAgent(String(req.params.id), (req as any).agent.id);
+    res.json({ ok: true, ...out });
+  } catch (e: any) {
+    if (e instanceof offers.OfferRefused) {
+      return res.status(404).json({ error: e.message, code: e.code });
+    }
+    err(res, e);
+  }
+});
+
+/** POST /agent/offers/:id/redeem — the agent acted on it. */
+router.post('/agent/offers/:id/redeem', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    await offers.recordRedemption({
+      offerId: String(req.params.id),
+      agentId: (req as any).agent.id,
+      shareId: req.body?.share_id ? String(req.body.share_id) : undefined,
+      humanEmail: req.body?.human_email ? String(req.body.human_email).slice(0, 320) : undefined,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    res.json({ ok: true });
   } catch (e: any) { err(res, e); }
 });
 

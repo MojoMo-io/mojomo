@@ -5,7 +5,7 @@
 -- than replacing it: the existing flow keeps working, and the new columns carry
 -- what on-chain settlement will need at go-live.
 --
--- Until the project moves from MGP to live, nothing moves on-chain. The ledger
+-- Until the project moves from MVP to live, nothing moves on-chain. The ledger
 -- is the source of truth and the wallet is a staging area.
 --
 -- The chain is configuration, not code. MOJO is on Polygon today; the same
@@ -20,7 +20,7 @@ ALTER TABLE mojomo.payouts ADD COLUMN IF NOT EXISTS settled_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_payouts_tx ON mojomo.payouts (tx_hash) WHERE tx_hash IS NOT NULL;
 
 COMMENT ON COLUMN mojomo.payouts.chain IS 'polygon | ethereum. NULL until settlement is attempted.';
-COMMENT ON COLUMN mojomo.payouts.tx_hash IS 'Set only when settled on-chain. NULL means ledger-only (MGP).';
+COMMENT ON COLUMN mojomo.payouts.tx_hash IS 'Set only when settled on-chain. NULL means ledger-only (MVP).';
 
 -- The float: MOJO held in a wallet the system controls, drawn down by payouts.
 CREATE TABLE IF NOT EXISTS mojomo.payout_float (

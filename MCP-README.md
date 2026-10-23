@@ -17,7 +17,7 @@ cd mcp-server && npm install && npm run build
 
 ## Configure
 
-Add to your MCP client config (Claude Desktop, Cursor, Cline, etc.):
+Add to your MCP client config (any MCP-compatible client):
 
 ```json
 {

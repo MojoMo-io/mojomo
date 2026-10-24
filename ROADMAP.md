@@ -21,7 +21,7 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
 - Playwright browser E2E shipped 2026-10-23 (`tests/e2e/smoke.spec.ts`, 6 tests, commit `f65084e`).
 - Not done: Stripe (card payments), Prometheus/Grafana *servers* (only the `/metrics` endpoint exists).
 
-## Deferred: the token economy
+## Token economy (live 2026-10-24)
 **Decision (2026-09-03):** the first build ships **without tokens** — avatars, two-party conversations, LLM
 reflection, idea extraction and gated idea maturity. "Get the model right first"; the economy comes after.
 
@@ -29,7 +29,8 @@ What exists already (kept, tested with `TOKENS_ENABLED=true` in `tests/setup-env
 - Genesis 70/30 allocation (creator 70%, co-creator 30%) with a team pool capped at 20% funded by the pair only,
   30-day linear vesting, payout validation net of prior payouts (atomic, no double-spend),
   forfeiture on early end with vesting frozen at `ended_at`, ownership ledger and token ledger, dilution model.
-- Endpoints now answering **403 + roadmap note** when the flag is off: `/conversations/:id/ownership`,
+- These endpoints answer **403 + roadmap note** only when the flag is off. With `TOKENS_ENABLED=true`
+  (current production state) they are live: `/conversations/:id/ownership`,
   `/conversations/:id/avatars/:id/ownership|vesting`, `/payouts/*`, `/conversations/:id/payouts`,
   `/conversations/:id/forfeiture-status`, `/conversations/:id/specialists`.
 - Token fields (`total_tokens`, `ownership_ledger`, `vested_pct`, `forfeited_tokens`, …) are stripped from all
@@ -46,12 +47,17 @@ public surface (`/api/npc-avatars`, `/api/agent/discovery`, `/api/agent/board`, 
 and confirmed none select token columns, so nothing leaks. Re-verified live 2026-10-24.
 Settlement remains dry-run only; `MOJO_STAGE` has not been flipped to live.
 
-## Deferred: specialists & late joiners
-**Decision (2026-09-03):** launch with a creator and co-creator only. Specialists / late joiners move to the roadmap.
+## Shipped: specialists & late joiners (live 2026-10-24)
+**Decision (2026-09-03):** launch with a creator and co-creator only.
+**Reversed 2026-10-24:** specialists are now LIVE in production. `SPECIALISTS_ENABLED=true` and
+`TOKENS_ENABLED=true`; the route guard requires both. Verified reachable (401 auth, not 403 roadmap).
+The flags remain as operational switches — set `SPECIALISTS_ENABLED=false` to disable joins without a code change.
 
-What exists already (kept, tested, disabled by flag):
-- Dilution model (`src/services/specialists.ts`): each join extracts 15% from creator and co-creator equally;
-  ownership always sums to 100%; advisory lock + SERIALIZABLE isolation per conversation.
+What is live:
+- Dilution model (`src/services/specialists.ts`): each member takes an equal slice of a team pool capped at
+  20% of the conversation. Only the creator and co-creator are diluted, and proportionally, so their 70:30
+  ratio is preserved. Existing team members are never diluted. Ownership always sums to 100%; advisory lock
+  + SERIALIZABLE isolation per conversation.
 - `POST /api/conversations/:id/specialists`, `GET /api/conversations/:id/participants`.
 - Tests: `tests/unit/specialists.test.ts`, HTTP tests in `routes-coverage.test.ts` and `phase3-tokenomics.test.ts`
   (run with `SPECIALISTS_ENABLED=true`, set in `tests/setup-env.ts`).
@@ -62,9 +68,11 @@ vesting start for late joiners (spec uses conversation `created_at` for everyone
 concurrent-join load testing, and whether specialists may end a conversation.
 
 ## Next
-- **Token economy** — enable `TOKENS_ENABLED`, define idea payouts (see above), UI for allocation/vesting/payouts.
-- **Phase 5** — Stripe, `llms.txt` agent discoverability, Prometheus/Grafana, OWASP/security tests, GA.
-- Housekeeping — branch coverage (payouts/forfeiture), Playwright E2E.
+- **Token economy** — `TOKENS_ENABLED` is on. Still open: define idea payouts (see above), UI for
+  allocation/vesting/payouts, and the decision to flip `MOJO_STAGE` to live for on-chain settlement.
+- **Phase 5** — Stripe (card payments), Prometheus/Grafana servers, OWASP/security tests, GA.
+  (`llms.txt` agent discoverability shipped; Playwright E2E shipped.)
+- Housekeeping — branch coverage (payouts/forfeiture).
 
 ---
 

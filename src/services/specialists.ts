@@ -15,7 +15,9 @@ export const TEAM_POOL_PCT = 20.0;
  * - Acquires advisory lock to prevent concurrent joins
  * - Uses SERIALIZABLE isolation
  * - Re-fetches conversation to detect race conditions
- * - Extracts 15% from both A and B equally
+ * - Each member takes an equal slice of the 20% team pool
+ * - Only the creator and co-creator are diluted, proportionally, so their 70:30 ratio holds
+ * - Existing team members are never diluted
  * - Updates ownership ledger
  * - Logs event to token_ledger
  */

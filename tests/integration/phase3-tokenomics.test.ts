@@ -177,13 +177,13 @@ describe('dormancy sweep (90 days without a message)', () => {
   });
 });
 
-describe('specialists are a roadmap item', () => {
-  test('flag off -> 403 with roadmap note; flag on -> dilution works', async () => {
+describe('specialists are live, gated by an operational flag', () => {
+  test('flag off -> 403 with an explanatory note; flag on -> dilution works', async () => {
     const id = await conv('flag');
     const prev = process.env.SPECIALISTS_ENABLED;
     delete process.env.SPECIALISTS_ENABLED;
     const off = await request(app).post(`/api/conversations/${id}/specialists`).send({ specialist_avatar_id: spec }).expect(403);
-    expect(off.body.roadmap).toMatch(/roadmap|co-creator/i);
+    expect(off.body.roadmap).toMatch(/SPECIALISTS_ENABLED|switched off/i);
     process.env.SPECIALISTS_ENABLED = 'true';
     await request(app).post(`/api/conversations/${id}/specialists`).send({ specialist_avatar_id: spec }).expect(201);
     process.env.SPECIALISTS_ENABLED = prev;

@@ -17,14 +17,13 @@ const JoinSpecialistSchema = z.object({
  * Body: { specialist_avatar_id }
  */
 router.post('/conversations/:id/specialists', async (req: Request, res: Response) => {
-  // Product decision 2026-09-03: conversations have a creator (initiator) and a co-creator (target) only.
-  // Specialists / late joiners are a roadmap item (see ROADMAP.md). The dilution flow stays implemented
-  // and tested behind this flag so it can be enabled without code changes.
-  // Dilution is part of the token economy: both flags must be on.
+  // Specialists / late joiners are LIVE in production as of 2026-10-24 (SPECIALISTS_ENABLED=true).
+  // The flag remains as an operational switch: set SPECIALISTS_ENABLED=false to disable joins
+  // without a code change. Dilution is part of the token economy, so TOKENS_ENABLED must also be on.
   if (!specialistsEnabled() || !tokensEnabled()) {
     return res.status(403).json({
-      error: 'Specialist joins are not yet available',
-      roadmap: 'Specialists & late joiners are planned; conversations currently support a creator and co-creator only.',
+      error: 'Specialist joins are currently disabled',
+      roadmap: 'Specialist joins are live but switched off on this deployment. Set SPECIALISTS_ENABLED=true (and TOKENS_ENABLED=true) to enable them.',
     });
   }
   try {

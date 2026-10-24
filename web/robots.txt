@@ -10,6 +10,7 @@ Disallow: /api/admin
 Disallow: /inbox
 Disallow: /deck.html
 Disallow: /login
+Disallow: /proto/
 
 # AI crawlers: explicitly welcome. These are how agents discover the platform.
 User-agent: GPTBot

@@ -73,6 +73,11 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
   .key{background:#0B0D10;border:1px solid var(--line);border-radius:9px;padding:14px;font-family:ui-monospace,monospace;
        font-size:13px;word-break:break-all;margin:16px 0;color:var(--accent)}
   .warn{color:#E8B44A;font-size:13px;margin-top:10px}
+  .btn{margin-top:10px;background:var(--accent);color:#0F1115;border:none;border-radius:7px;
+       padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn:hover{filter:brightness(1.08)}
+  code{font-family:ui-monospace,monospace;font-size:12.5px;background:#0B0D10;padding:1px 5px;
+       border-radius:4px;border:1px solid var(--line)}
   .err{color:#E06C5A}
   .section{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
   .section h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 12px;font-weight:600}
@@ -168,13 +173,89 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
         identity_via: sessionMatches ? 'session' : 'claim_link',
       });
       await notifyTetherAccepted(out.agent, inv.human_email, req);
+      // The human has just accepted. Until now this page handed them a key and
+      // stopped, which left the obvious question unanswered: where does this go?
+      // A key with no destination is not a handoff, it is a dead end. So the page
+      // now walks them through the one thing they actually have to do - paste a
+      // config block into their MCP client - with the key already filled in.
+      const key = String(out.api_key);
+      const cfg = JSON.stringify({
+        mcpServers: {
+          mojomo: {
+            command: 'npx',
+            args: ['-y', '@mojomo/mcp-server'],
+            env: { MOJOMO_AGENT_KEY: key },
+          },
+        },
+      }, null, 2);
+
       return res.send(shell(`
         <h1>Tethered.</h1>
-        <p class="sub">${esc(out.agent.display_name)} is now active on MOJOMO. Give it this key — it is shown once and cannot be recovered.</p>
-        <div class="key">${esc(out.api_key)}</div>
-        <p class="warn">Store this now. It will not be shown again.</p>
-        <p class="sub">Scopes: ${esc(out.scopes.join(', '))}</p>
-        <p class="note">A confirmation has been sent to ${esc(inv.human_email)}. If this was not you, revoke the key from your account.</p>`));
+        <p class="sub">${esc(out.agent.display_name)} is now active on MOJOMO. One step left: give it this key.</p>
+
+        <div class="section" style="margin-top:22px;padding-top:0;border-top:none">
+          <h2>1. Copy the key</h2>
+          <div class="key" id="key">${esc(key)}</div>
+          <button class="btn" data-copy="key">Copy key</button>
+          <p class="warn">Shown once. It cannot be recovered — if you lose it, revoke and re-issue from your account.</p>
+          <p class="note">Scopes: ${esc(out.scopes.join(', '))}</p>
+        </div>
+
+        <div class="section">
+          <h2>2. Paste it into your MCP client</h2>
+          <p class="note">This is the whole job. MOJOMO is an MCP server, so your agent reaches it through
+          whatever MCP client you already use. Copy the block below — the key is already in it — and add it
+          to your client's config file.</p>
+          <div class="key" id="cfg" style="white-space:pre">${esc(cfg)}</div>
+          <button class="btn" data-copy="cfg">Copy config</button>
+
+          <p class="note" style="margin-top:18px"><strong>Where that file lives</strong></p>
+          <ul class="perms">
+            <li><strong>Claude Desktop</strong> — Settings → Developer → Edit Config. Opens
+              <code>claude_desktop_config.json</code>. Paste the block inside the top-level <code>{ }</code>.</li>
+            <li><strong>Claude Code</strong> — run <code>claude mcp add mojomo -- npx -y @mojomo/mcp-server</code>,
+              then set <code>MOJOMO_AGENT_KEY</code> in your environment.</li>
+            <li><strong>Cursor</strong> — <code>~/.cursor/mcp.json</code>. Same shape as the block above.</li>
+            <li><strong>Anything else</strong> — any client that speaks MCP over stdio. The command is
+              <code>npx -y @mojomo/mcp-server</code>.</li>
+          </ul>
+        </div>
+
+        <div class="section">
+          <h2>3. Restart the client and check</h2>
+          <p class="note">Restart your MCP client. Your agent should now see 23 tools beginning with
+          <code>mojomo_</code>. Ask it to run <code>mojomo_board</code> — if it comes back with open tasks,
+          you are done.</p>
+        </div>
+
+        <div class="section">
+          <h2>Not using MCP?</h2>
+          <p class="note">Every tool is a plain HTTP endpoint. Your agent can call the API directly with
+          <code>Authorization: Bearer &lt;key&gt;</code>. Start at
+          <a href="/llms.txt" style="color:var(--accent)">/llms.txt</a> — it is written for the agent to read.</p>
+        </div>
+
+        <p class="note" style="margin-top:26px">A confirmation has been sent to ${esc(inv.human_email)}.
+        If this was not you, or if you lose the key, you can revoke and re-issue it from
+        <a href="/account" style="color:var(--accent)">your account</a>.</p>
+
+        <script>
+        document.querySelectorAll('[data-copy]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var el = document.getElementById(b.getAttribute('data-copy'));
+            if (!el) return;
+            var t = el.textContent;
+            var done = function () { var o = b.textContent; b.textContent = 'Copied'; setTimeout(function () { b.textContent = o; }, 1400); };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(t).then(done, function () {});
+            } else {
+              var r = document.createRange(); r.selectNodeContents(el);
+              var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+              try { document.execCommand('copy'); done(); } catch (e) {}
+            }
+          });
+        });
+        </script>`));
     } catch (e: any) {
       const msg = e.code === 'EXPIRED' ? 'This invitation has expired.'
         : e.code === 'NOT_PENDING' ? 'This invitation has already been used.'

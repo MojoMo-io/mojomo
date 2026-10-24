@@ -25,6 +25,7 @@ import assessmentRoutes from './routes/assessments';
 import payoutAdminRoutes from './routes/payoutAdmin';
 import agentApiRoutes from './routes/agentApi';
 import agentClaimPage from './routes/agentClaimPage';
+import accountPage from './routes/accountPage';
 import invitationsPage from './routes/invitationsPage';
 import boardPage from './routes/boardPage';
 import taskApiRoutes from './routes/taskApi';
@@ -71,6 +72,7 @@ export function createApp(): express.Application {
   app.use('/api', apiLimiter, validateIdParams);
   app.use(openapiRoutes);                             // /openapi.json
   app.use(agentClaimPage);                            // human-facing claim page (HTML)
+  app.use(accountPage);                               // human-facing account page (HTML)
   app.use(invitationsPage);                           // human-facing invitations list (HTML)
   app.use(boardPage);                                 // public crawlable board (HTML)
   app.use(inboxPageRoutes);                           // human-facing inbox: agent decisions (HTML)

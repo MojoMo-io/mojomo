@@ -11,6 +11,8 @@ import * as shares from '../services/shares';
 import * as offers from '../services/offers';
 import * as vouchAsk from '../services/vouchAsk';
 import { agentRateLimit } from '../middleware/agentRateLimit';
+import * as auth from '../services/auth';
+import { parseCookies } from '../middleware/auth';
 
 async function requireAgent(req: Request, res: Response, next: Function) {
   const hdr = String(req.headers.authorization || '');
@@ -358,6 +360,72 @@ router.get('/agent/offers/:id', requireAgent, agentRateLimit, async (req: Reques
  * one email from us and a second unsolicited one is where a product becomes a
  * nuisance.
  */
+/**
+ * POST /agent/reissue-key  { agent_id }
+ *
+ * Session-authenticated, not key-authenticated: this is the human recovering
+ * from a lost or leaked key, so it cannot require the key they lost. Revokes
+ * every live key for the agent, then issues one fresh key with the same scopes.
+ * The old key stops working the moment this returns.
+ */
+router.post('/agent/reissue-key', async (req: Request, res: Response) => {
+  try {
+    const cookies = parseCookies(req.headers.cookie || '');
+    const s = await auth.getSession(cookies[auth.SESSION_COOKIE]);
+    if (!s) return res.status(401).json({ error: 'Sign in first.', login: '/login' });
+
+    const agentId = String(req.body?.agent_id || '');
+    if (!agentId) return res.status(400).json({ error: 'agent_id required' });
+
+    // Ownership check: the caller must be the human who vouches for this agent.
+    const own = await db.query(
+      `SELECT id, status, tether_user_id FROM agent.agents WHERE id=$1`,
+      [agentId]
+    );
+    if (own.rows.length === 0) return res.status(404).json({ error: 'No such agent.' });
+    if (own.rows[0].tether_user_id !== s.userId) {
+      return res.status(403).json({ error: 'You do not vouch for this agent.' });
+    }
+    if (own.rows[0].status !== 'active') {
+      return res.status(409).json({ error: 'This agent is not active.' });
+    }
+
+    // Carry forward the scopes the agent already holds, so re-issuing never
+    // silently widens or narrows what it can do.
+    const prev = await db.query(
+      `SELECT scopes FROM agent.api_keys
+        WHERE agent_id=$1 AND revoked_at IS NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [agentId]
+    );
+    const scopes = (prev.rows[0]?.scopes as string[]) || undefined;
+
+    await db.query(
+      `UPDATE agent.api_keys SET revoked_at=now() WHERE agent_id=$1 AND revoked_at IS NULL`,
+      [agentId]
+    );
+    const issued = await agents.issueKey(agentId, scopes as any, 'reissued by human');
+
+    // agent.audit is a request log (method/path/status/ip), not an event log.
+    // Record the reissue in the shape that table actually has.
+    await db.query(
+      `INSERT INTO agent.audit (agent_id, method, path, status, ip)
+       VALUES ($1,'POST','/api/agent/reissue-key',200,$2)`,
+      [agentId, req.ip || null]
+    ).catch(() => undefined);
+
+    return res.json({
+      ok: true,
+      api_key: issued.api_key,
+      scopes: issued.scopes,
+      note: 'The previous key has been revoked. Store this one now — it is shown once.',
+    });
+  } catch (e: any) {
+    console.error('reissue-key failed:', e?.message || e);
+    return res.status(500).json({ error: 'Could not issue a key.' });
+  }
+});
+
 router.post('/agent/ask-to-vouch', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
   try {
     const invitationId = String(req.body?.invitation_id || '');

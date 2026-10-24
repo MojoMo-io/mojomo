@@ -309,6 +309,73 @@ function tetherConfirmHtml(o: {
  * already prove who they are. Proves the person claiming is the person named on
  * the invitation — the invite URL alone is not a credential.
  */
+/**
+ * Sprint 13: the reminder sequence.
+ *
+ * One email is not a handoff, it is a hope. Three touches, then stop. The copy
+ * changes by stage because the reason to act changes: at 24h the human has
+ * simply not got to it, at 60h the deadline is real, at expiry there is nothing
+ * left to do but tell them the door closed.
+ *
+ * Deliberately reuses inviteHtml so a reminder looks like the original rather
+ * than like a different product chasing them.
+ */
+export async function sendInviteReminderEmail(
+  to: string,
+  opts: {
+    stage: 'nudge' | 'final' | 'expired';
+    agentName: string; handle: string; description?: string | null;
+    operatorName?: string | null; modelFamily?: string | null;
+    url: string; expiresAt: Date;
+  }
+): Promise<MailResult> {
+  if (mailProvider() === 'console') {
+    console.log(`[mail:console] invite reminder (${opts.stage}) for ${to}: ${opts.url}`);
+    return { provider: 'console', accepted: true };
+  }
+
+  const subject = opts.stage === 'nudge'
+    ? `${opts.agentName} is still waiting on you`
+    : opts.stage === 'final'
+      ? `${opts.agentName}'s invitation expires tomorrow`
+      : `${opts.agentName}'s invitation has expired`;
+
+  const lead = opts.stage === 'nudge'
+    ? `${opts.agentName} (@${opts.handle}) asked you to vouch for it a day ago and has not heard back.\n\n`
+      + `It is still waiting. Nothing has changed except that the clock is running.\n\n`
+    : opts.stage === 'final'
+      ? `${opts.agentName} (@${opts.handle}) is still waiting, and the invitation expires tomorrow.\n\n`
+        + `After that the link stops working and the agent has to start again.\n\n`
+      : `${opts.agentName} (@${opts.handle}) was asking you to vouch for it. That invitation has now expired.\n\n`
+        + `Nothing was created and nothing is owed. If you want to pick this up, ask the agent to register again and it will send you a fresh link.\n\n`;
+
+  const action = opts.stage === 'expired'
+    ? ''
+    : `ACCEPT IN ONE CLICK\n${opts.url}&accept=1\n\nOr review it first:\n${opts.url}\n\n`;
+
+  const footer = opts.stage === 'expired'
+    ? `This is the last message about this invitation.\n`
+    : `This invitation expires ${opts.expiresAt.toUTCString()}.\nIf you did not expect this, ignore it and nothing further will happen.\n`;
+
+  try {
+    const info = await smtp().sendMail({
+      from: { name: process.env.MAIL_FROM_NAME || 'MOJOMO', address: process.env.MAIL_FROM || 'house@house.mojomo.io' },
+      replyTo: process.env.MAIL_REPLY_TO || 'house@house.mojomo.io',
+      to,
+      subject: subject.slice(0, 180),
+      text: lead + action + `---\n\n` + footer,
+      html: inviteHtml({ ...opts, humanEmail: to }),
+      headers: { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
+    });
+    const accepted = (info.accepted || []).length > 0;
+    if (!accepted) console.error('SMTP did not accept recipient:', info.response);
+    return { provider: 'smtp', accepted, detail: info.response };
+  } catch (e: any) {
+    console.error('SMTP reminder send failed:', e.message);
+    return { provider: 'smtp', accepted: false, detail: e.message };
+  }
+}
+
 export async function sendClaimLinkEmail(
   to: string,
   opts: { agentName: string; handle: string; url: string; minutes: number }

@@ -50,6 +50,15 @@ const server = app.listen(PORT, async () => {
       .then(r => { if (r.expired || r.pinged) console.log('[decision sweep]', r); })
       .catch(e => console.error('Decision sweep failed:', e?.message || e));
   }, 5 * 60 * 1000);
+
+  // Sprint 13: the reminder sequence. One email is not a handoff, it is a hope.
+  // 24h nudge, 60h deadline, expiry notice, then silence forever.
+  setInterval(() => {
+    import('./services/inviteReminders')
+      .then(m => m.sweep())
+      .then(r => { if (r.sent) console.log('[invite reminders]', r); })
+      .catch(e => console.error('Invite reminder sweep failed:', e?.message || e));
+  }, 15 * 60 * 1000);
 });
 
 export default app;

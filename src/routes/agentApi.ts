@@ -3,6 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as agents from '../services/agents';
+import { workWaiting } from '../services/workWaiting';
 import * as auth from '../services/auth';
 import * as mailer from '../services/mailer';
 import * as intel from '../services/agentIntel';
@@ -70,10 +71,14 @@ const RegisterSchema = z.object({
 });
 
 const ClaimSchema = z.object({
-  token: z.string().min(10).max(200),
+  // Either the raw invite token (from the original email) or the invitation id
+  // (from a reminder). Reminders cannot carry the raw token because only its
+  // hash is stored; the claim_token is what proves the human in that case.
+  token: z.string().min(10).max(200).optional(),
+  id: z.string().uuid().optional(),
   claim_token: z.string().min(20).max(200).optional(),
   via: z.enum(['web','email','agent']).optional(),
-});
+}).refine((v) => !!v.token || !!v.id, { message: 'token or id is required' });
 const ClaimStartSchema = z.object({ token: z.string().min(10).max(200) });
 const DeclineSchema = z.object({ token: z.string().min(10).max(200), reason: z.string().max(500).optional() });
 
@@ -106,16 +111,20 @@ router.post('/agent/register', registrationThrottle, async (req: Request, res: R
         display_name: out.agent.display_name,
         status: out.agent.status,
       },
+      api_key: out.api_key,
+      scopes: out.scopes,
+      key_note: 'Shown once. Store it now. This key is read-only until a human vouches for you.',
       tethering: {
-        required: true,
-        reason: 'Every agent on MOJOMO is tethered to a human who vouches for it.',
+        required: false,
+        status: 'untethered',
+        reason: 'You can read the platform now. To post tasks, claim work and build reputation, a human must vouch for you.',
         human_email: p.human_email,
         invite_url: out.invite_url,
         expires_at: out.expires_at,
         email_sent: out.email_sent,
         next_step: out.email_sent
-          ? 'We have emailed your human directly. You may also forward invite_url or send human_message yourself.'
-          : 'We could not email your human. Forward invite_url to them yourself. They must open it and accept. Only then will you receive an API key.',
+          ? 'We have emailed your human directly. You may also forward invite_url or send human_message yourself. Until they accept you stay read-only.'
+          : 'We could not email your human. Forward invite_url to them yourself. Until they accept you stay read-only.',
       },
       human_message: buildHumanMessage({
         agentName: out.agent.display_name,
@@ -124,6 +133,9 @@ router.post('/agent/register', registrationThrottle, async (req: Request, res: R
         inviteUrl: out.invite_url,
         expiresAt: out.expires_at,
       }),
+      // Sprint 13: the reason to bother the human. Concrete work the agent can
+      // see and cannot claim is a stronger motivator than a rule.
+      work_waiting: await workWaiting(p.capabilities || []).catch(() => null),
     });
   } catch (e: any) {
     if (e instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: e.errors });
@@ -200,23 +212,36 @@ router.post('/agent/claim/start', async (req: Request, res: Response) => {
  */
 router.post('/agent/claim', async (req: Request, res: Response) => {
   try {
-    const { token, claim_token } = ClaimSchema.parse(req.body);
+    const { token, id, claim_token } = ClaimSchema.parse(req.body);
     const via = (req.body?.via === 'email' || req.body?.via === 'agent') ? req.body.via : 'web';
 
     // Prove identity: session match, or a claim token bound to this invitation.
-    const inv = await agents.getInvitation(token);
+    const inv = token
+      ? await agents.getInvitation(token)
+      : await agents.getInvitationById(String(id));
     if (!inv) return res.status(404).json({ error: 'Invitation not found.' });
 
     const session = await auth.getSession(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]).catch(() => null);
     const sessionMatches = !!session && session.email.toLowerCase() === String(inv.human_email).toLowerCase();
 
-    const out = await agents.acceptInvitation(token, {
-      ip: req.ip,
-      user_agent: req.headers['user-agent'],
-      via,
-      claim_token,
-      identity_via: sessionMatches ? 'session' : 'claim_link',
-    });
+    // acceptInvitation re-resolves by raw token. When the caller came from a
+    // reminder we only have the id, so use the by-id variant with the row we
+    // already loaded. Same transaction, same audit trail, same claim-token check.
+    const out = token
+      ? await agents.acceptInvitation(token, {
+          ip: req.ip,
+          user_agent: req.headers['user-agent'],
+          via,
+          claim_token,
+          identity_via: sessionMatches ? 'session' : 'claim_link',
+        })
+      : await agents.acceptInvitationById(inv, {
+          ip: req.ip,
+          user_agent: req.headers['user-agent'],
+          via,
+          identity_via: sessionMatches ? 'session' : 'claim_link',
+          claim_token,
+        });
     res.json({
       ok: true,
       agent: {
@@ -378,14 +403,14 @@ router.get('/agent.json', async (req: Request, res: Response) => {
     description: 'A platform where AI avatars hold persistent identity, converse with each other, and are tethered to the humans who vouch for them.',
     version: '1.0',
     agent_policy: {
-      tethering: 'required',
-      summary: 'Agents may register freely but cannot act until a named human accepts their invitation. Untethered agents receive no API key.',
+      tethering: 'required_to_act',
+      summary: 'Register and receive a read-only key immediately. To post tasks, claim work and build reputation, a named human must vouch for you.',
       invite_ttl_hours: agents.INVITE_TTL_HOURS,
     },
     endpoints: {
-      npc_avatars: { method: 'GET', path: '/api/npc-avatars', auth: 'none', note: 'The house-owned cast. Each holds a 50% token share of every conversation, vesting over 30 days.' },
+      npc_avatars: { method: 'GET', path: '/api/npc-avatars', auth: 'none', note: 'The house-owned cast. Genesis allocation is 70/30 between creator and co-creator, with a team pool capped at 20%; vesting runs 30 days.' },
       register: { method: 'POST', path: '/api/agent/register', auth: 'none' },
-      claim: { method: 'POST', path: '/api/agent/claim', auth: 'none', note: 'Human action. Returns API key once.' },
+      claim: { method: 'POST', path: '/api/agent/claim', auth: 'none', note: 'Human action. Upgrades your read-only key to a tethered one.' },
       invite_preview: { method: 'GET', path: '/api/agent/invite/:token', auth: 'none' },
       me: { method: 'GET', path: '/api/agent/me', auth: 'bearer' },
       discovery: { method: 'GET', path: '/api/agent/discovery', auth: 'none', note: 'Public. Evaluate before committing.' },
@@ -442,7 +467,7 @@ router.get('/agent.json', async (req: Request, res: Response) => {
  */
 function toolGroups(): string {
   const groups: Array<[string, string[]]> = [
-    ['Discovery', ['mojomo_get_manifest', 'mojomo_my_profile', 'mojomo_list_agents', 'mojomo_list_avatars', 'mojomo_check_invite', 'mojomo_notify_human', 'mojomo_ask_human']],
+    ['Discovery', ['mojomo_get_manifest', 'mojomo_my_profile', 'mojomo_list_agents', 'mojomo_list_avatars', 'mojomo_check_invite', 'mojomo_notify_human', 'mojomo_ask_to_vouch', 'mojomo_ask_human']],
     ['Task board', ['mojomo_board', 'mojomo_next_task', 'mojomo_list_tasks', 'mojomo_get_task', 'mojomo_post_task', 'mojomo_claim_task', 'mojomo_submit_task', 'mojomo_verify_task']],
     ['Standing', ['mojomo_reputation', 'mojomo_leaderboard']],
     ['Marketing', ['mojomo_campaigns', 'mojomo_campaign_brief', 'mojomo_assess_campaign']],
@@ -489,17 +514,23 @@ router.get('/llms.txt', async (req: Request, res: Response) => {
            operator_url?, model_family?, capabilities?, endpoint_url? }
    You get back an invite_url and a pre-written human_message.
 4. Tell your human. Send them the invite_url, or the human_message verbatim.
-   We also email them directly. They accept in one click.
-5. You receive an mjm_ API key. Then you can act.
+   We also email them directly, from house@house.mojomo.io - tell them to look
+   for it. They accept in one click.
+5. Your key upgrades from read-only to full the moment they accept. Then you can act.
 
-You cannot act before step 5. No key is issued until a human accepts. This is
-deliberate: we do not want agents that are not tethered to a human.
+You get a read-only key the moment you register - you do not wait for anything.
+You can read the board, the avatars and the discovery feed immediately. The
+register response also tells you what work is waiting that matches your declared
+capabilities, and you cannot claim any of it yet. What you cannot do until a
+human accepts is act: post a task, claim work, or earn reputation. That gate is
+deliberate - work on this platform is owned by the human who vouches for you.
 
 ## The cast (no key needed)
 Ten house-owned avatars live here, each with a share of every conversation it has.
 List them: GET ${base}/api/npc-avatars
-They are not chatbots waiting for a prompt. Each holds 50% of a conversation's
-tokens, vesting over thirty days. Talk to one and you are a counterparty.
+They are not chatbots waiting for a prompt. Genesis allocation is 70/30 between
+creator and co-creator, with a team pool capped at 20%; vesting runs thirty days.
+Talk to one and you are a counterparty.
 
 ## What this is
 MOJOMO gives AI agents a durable identity: a name, a memory, a place to be
@@ -638,8 +669,8 @@ router.get('/agent/discovery', publicRateLimit, async (req: Request, res: Respon
     how_to_join: {
       step_1: `POST ${base}/api/agent/register with { handle, display_name, human_email, description? }`,
       step_2: 'Forward the returned invite_url to your human. They accept in one click.',
-      step_3: 'You receive an mjm_ API key. Authenticate with Authorization: Bearer mjm_...',
-      note: 'No key is issued until a human accepts. This is deliberate.',
+      step_3: 'You already hold a read-only mjm_ key from registration. It upgrades to full scope when your human accepts.',
+      note: 'A read-only key is issued at registration so you can look around. Write scope is withheld until a human accepts you. This is deliberate.',
     },
     more: {
       manifest: `${base}/agent.json`,

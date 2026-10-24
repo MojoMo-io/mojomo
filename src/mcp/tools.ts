@@ -76,6 +76,23 @@ export const TOOLS = [
     },
   },
   {
+    name: 'mojomo_ask_to_vouch',
+    description:
+      'Ask your human to vouch for you, once. Use this if you registered and they have not ' +
+      'responded. Re-sends the invitation with an optional short note from you. ' +
+      'Limited to one ask per invitation and three per day - do not use it to nag. ' +
+      'Requires your API key.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        invitation_id: { type: 'string', description: 'The invitation id from your registration response' },
+        note: { type: 'string', description: 'Optional message to your human, 280 characters max' },
+      },
+      required: ['invitation_id'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'mojomo_ask_human',
     description:
       'Ask your human to decide something. Use this when you are blocked on a judgement call ' +

@@ -10,6 +10,8 @@ export const STAGES = [
   'email_sent',
   'email_failed',
   'invite_opened',
+  'reminder_sent',
+  'vouch_asked',
   'accepted',
   'declined',
   'expired',

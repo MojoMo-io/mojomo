@@ -90,7 +90,7 @@ describe('claim authentication', () => {
 
     // And the agent must still be untethered.
     const r = await db.query(`SELECT status, tether_user_id FROM agent.agents WHERE handle=$1`, [handle]);
-    expect(r.rows[0].status).toBe('pending');
+    expect(r.rows[0].status).toBe('untethered');
     expect(r.rows[0].tether_user_id).toBeNull();
   });
 
@@ -107,7 +107,7 @@ describe('claim authentication', () => {
     await expect(
       agents.acceptInvitation(a.invite_token, { claim_token: stolen.token })
     ).rejects.toMatchObject({ code: 'CLAIM_REQUIRED' });
-    expect(b.agent.status).toBe('pending');
+    expect(b.agent.status).toBe('untethered');
   });
 
   it('accepts with a valid claim token and burns it', async () => {

@@ -67,7 +67,7 @@ export async function registerAgent(input: {
   user_agent?: string;
   ip?: string;
   country?: string | null;
-}): Promise<{ agent: AgentRow; invite_token: string; invite_url: string; expires_at: Date; email_sent: boolean }> {
+}): Promise<{ agent: AgentRow; invite_token: string; invite_url: string; expires_at: Date; email_sent: boolean; api_key: string; scopes: Scope[] }> {
   const existing = await db.query('SELECT id FROM agent.agents WHERE handle = $1', [input.handle]);
   if (existing.rows.length > 0) {
     throw Object.assign(new Error('Handle already taken'), { code: 'HANDLE_TAKEN' });
@@ -77,7 +77,7 @@ export async function registerAgent(input: {
     `INSERT INTO agent.agents
        (handle, display_name, description, operator_name, operator_url,
         model_family, capabilities, endpoint_url, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'untethered')
      RETURNING *`,
     [
       input.handle,
@@ -209,7 +209,17 @@ export async function registerAgent(input: {
     user_agent: input.user_agent,
   });
 
-  return { agent, invite_token: inviteToken, invite_url, expires_at: inviteExpiresAt, email_sent };
+  // Stage 1 (2026-10-24): issue a working key at registration so agents can
+  // arrive and look around without waiting on a human. The key carries
+  // DEFAULT_SCOPES only (read:profile, read:avatars, read:discovery) and the
+  // agent's status is 'untethered'. Acting - posting tasks, claiming work,
+  // earning reputation - still requires tethering, which is stage 2.
+  const issued = await issueKey(agent.id, DEFAULT_SCOPES, 'registration');
+
+  return {
+    agent, invite_token: inviteToken, invite_url, expires_at: inviteExpiresAt, email_sent,
+    api_key: issued.api_key, scopes: issued.scopes,
+  };
 }
 
 /** Look up an invitation by its id. Used by session-authenticated flows that
@@ -265,10 +275,29 @@ export async function acceptInvitationById(
   meta: {
     ip?: string; user_agent?: string; via?: 'web' | 'email' | 'agent';
     identity_via?: 'session' | 'claim_link';
+    /**
+     * Required when identity_via is 'claim_link'. The invitation id is not a
+     * secret - it appears in reminder links and in the human's own inbox - so
+     * the id alone must never be enough to tether an agent. The claim token is
+     * the proof, and it only ever travels to the named human's inbox.
+     */
+    claim_token?: string;
   }
 ): Promise<{ agent: AgentRow; api_key: string; scopes: Scope[] }> {
   if (!inv) throw Object.assign(new Error('Invitation not found'), { code: 'NOT_FOUND' });
   if (inv.status !== 'pending') throw Object.assign(new Error(`Invitation already ${inv.status}`), { code: 'NOT_PENDING' });
+
+  if (meta.identity_via === 'claim_link') {
+    const ok = meta.claim_token
+      ? await verifyClaimToken(inv.id, meta.claim_token)
+      : false;
+    if (!ok) {
+      throw Object.assign(
+        new Error('This link needs confirming first. Use the link in your email.'),
+        { code: 'CLAIM_REQUIRED' }
+      );
+    }
+  }
   if (new Date(inv.expires_at) < new Date()) {
     await db.query(`UPDATE agent.invitations SET status='expired' WHERE id=$1`, [inv.id]);
     throw Object.assign(new Error('Invitation expired'), { code: 'EXPIRED' });
@@ -482,7 +511,14 @@ export async function declineInvitation(
   return { agent_id: inv.agent_id };
 }
 
-/** Issue a scoped API key. Only active, tethered agents may hold keys. */
+/**
+ * Issue a scoped API key.
+ *
+ * Tethered agents ('active') may hold any scope. Untethered agents ('untethered')
+ * may hold keys too, but only read-only ones - stage 1 lets agents arrive and look
+ * around before a human has vouched for them. Anything that writes still requires
+ * tethering, enforced at the service layer (see tasks.ts requireTethered).
+ */
 export async function issueKey(
   agentId: string,
   scopes: Scope[] = DEFAULT_SCOPES,
@@ -494,8 +530,18 @@ export async function issueKey(
   );
   if (check.rows.length === 0) throw Object.assign(new Error('Agent not found'), { code: 'NOT_FOUND' });
   const { status, tether_user_id } = check.rows[0];
-  if (status !== 'active' || !tether_user_id) {
-    throw Object.assign(new Error('Agent is not tethered to a human'), { code: 'NOT_TETHERED' });
+  const tethered = status === 'active' && !!tether_user_id;
+  if (!tethered) {
+    if (status !== 'untethered') {
+      throw Object.assign(new Error('Agent is not tethered to a human'), { code: 'NOT_TETHERED' });
+    }
+    const writeScopes = scopes.filter((s) => s.startsWith('write:'));
+    if (writeScopes.length > 0) {
+      throw Object.assign(
+        new Error(`Untethered agents cannot hold write scopes: ${writeScopes.join(', ')}`),
+        { code: 'NOT_TETHERED' }
+      );
+    }
   }
 
   const raw = `mjm_${randomToken()}`;
@@ -516,7 +562,7 @@ export async function resolveKey(raw: string): Promise<{
     `SELECT k.id AS key_id, k.scopes, k.rate_limit_per_min, a.*
        FROM agent.api_keys k
        JOIN agent.agents a ON a.id = k.agent_id
-      WHERE k.key_hash = $1 AND k.revoked_at IS NULL AND a.status = 'active'`,
+      WHERE k.key_hash = $1 AND k.revoked_at IS NULL AND a.status IN ('active', 'untethered')`,
     [hashToken(raw)]
   );
   if (res.rows.length === 0) return null;

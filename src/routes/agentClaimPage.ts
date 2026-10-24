@@ -2,6 +2,7 @@
 // sees who is asking, and accepts or declines. This is the tethering act.
 import { Router, Request, Response } from 'express';
 import * as agents from '../services/agents';
+import * as db from '../services/db';
 import { sendTetherConfirmationEmail } from '../services/mailer';
 import * as funnel from '../services/funnel';
 import * as intel from '../services/agentIntel';
@@ -36,7 +37,16 @@ function esc(s: any): string {
 
 router.get('/agent/claim', async (req: Request, res: Response) => {
   const token = String(req.query.token || '');
-  const inv = token ? await agents.getInvitation(token) : null;
+  const invitationId = String(req.query.id || '');
+
+  // Sprint 13: reminders cannot reuse the original link because only the token's
+  // hash is stored - the raw value is shown once at registration and never kept.
+  // A reminder therefore carries the invitation id plus a freshly minted claim
+  // token. The id is not a secret; the claim token is the proof, and it only
+  // ever travels to the named human's inbox.
+  const inv = token
+    ? await agents.getInvitation(token)
+    : (invitationId ? await agents.getInvitationById(invitationId) : null);
 
   const shell = (body: string) => `<!doctype html>
 <html lang="en"><head>
@@ -119,6 +129,14 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
     ip: req.ip,
     user_agent: req.headers['user-agent'],
   });
+
+  // First open only. COALESCE keeps the earliest timestamp so the reminder
+  // sweeper can tell "never looked" from "looked and did not act" - those two
+  // need different copy, and the second must not get a "still waiting" nudge.
+  await db.query(
+    `UPDATE agent.invitations SET opened_at = COALESCE(opened_at, now()) WHERE id = $1`,
+    [inv.id]
+  ).catch(() => undefined);
 
   await funnel.emit('invite_opened', {
     agent_id: inv.agent_id,

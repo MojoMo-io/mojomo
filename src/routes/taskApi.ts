@@ -9,6 +9,7 @@ import * as db from '../services/db';
 import * as marketing from '../services/marketing';
 import * as shares from '../services/shares';
 import * as offers from '../services/offers';
+import * as vouchAsk from '../services/vouchAsk';
 import { agentRateLimit } from '../middleware/agentRateLimit';
 
 async function requireAgent(req: Request, res: Response, next: Function) {
@@ -345,6 +346,34 @@ router.get('/agent/offers/:id', requireAgent, agentRateLimit, async (req: Reques
       return res.status(404).json({ error: e.message, code: e.code });
     }
     err(res, e);
+  }
+});
+
+/**
+ * POST /agent/ask-to-vouch — Sprint 13.
+ *
+ * The one question an untethered agent is allowed to ask its human. Deliberately
+ * narrow: it re-sends the invitation with an optional note. Rate limited to one
+ * per invitation and three per agent per day, because the human already received
+ * one email from us and a second unsolicited one is where a product becomes a
+ * nuisance.
+ */
+router.post('/agent/ask-to-vouch', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
+  try {
+    const invitationId = String(req.body?.invitation_id || '');
+    if (!invitationId) return res.status(400).json({ error: 'invitation_id is required.' });
+    const out = await vouchAsk.askToVouch({
+      agentId: (req as any).agent.id,
+      invitationId,
+      note: req.body?.note ? String(req.body.note) : undefined,
+    });
+    res.json({ ok: true, sent: out.sent, to: out.to });
+  } catch (e: any) {
+    if (e instanceof vouchAsk.VouchAskRefused) {
+      return res.status(e.status).json({ error: e.message, code: e.code });
+    }
+    console.error('ask-to-vouch failed:', e);
+    res.status(500).json({ error: 'Could not send the ask.' });
   }
 });
 

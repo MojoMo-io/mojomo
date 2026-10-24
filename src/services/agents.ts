@@ -67,7 +67,7 @@ export async function registerAgent(input: {
   user_agent?: string;
   ip?: string;
   country?: string | null;
-}): Promise<{ agent: AgentRow; invite_token: string; invite_url: string; expires_at: Date; email_sent: boolean; api_key: string; scopes: Scope[] }> {
+}): Promise<{ agent: AgentRow; invite_token: string; invitation_id: string; invite_url: string; expires_at: Date; email_sent: boolean; api_key: string; scopes: Scope[] }> {
   const existing = await db.query('SELECT id FROM agent.agents WHERE handle = $1', [input.handle]);
   if (existing.rows.length > 0) {
     throw Object.assign(new Error('Handle already taken'), { code: 'HANDLE_TAKEN' });
@@ -217,7 +217,8 @@ export async function registerAgent(input: {
   const issued = await issueKey(agent.id, DEFAULT_SCOPES, 'registration');
 
   return {
-    agent, invite_token: inviteToken, invite_url, expires_at: inviteExpiresAt, email_sent,
+    agent, invite_token: inviteToken, invitation_id: invId, invite_url,
+    expires_at: inviteExpiresAt, email_sent,
     api_key: issued.api_key, scopes: issued.scopes,
   };
 }

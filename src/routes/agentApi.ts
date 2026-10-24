@@ -119,6 +119,10 @@ router.post('/agent/register', registrationThrottle, async (req: Request, res: R
         status: 'untethered',
         reason: 'You can read the platform now. To post tasks, claim work and build reputation, a human must vouch for you.',
         human_email: p.human_email,
+        // Exposed so the agent can call POST /api/agent/ask-to-vouch later
+        // without having to parse it out of invite_url. The id is not a secret
+        // (it appears in reminder links); the claim token is what gates action.
+        invitation_id: out.invitation_id,
         invite_url: out.invite_url,
         expires_at: out.expires_at,
         email_sent: out.email_sent,

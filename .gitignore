@@ -42,8 +42,6 @@ env.*_oldfile
 *.bak.*
 *.orig
 *.rej
-*.swp
-*~
 
 # Local database and filesystem backups.
 backups/

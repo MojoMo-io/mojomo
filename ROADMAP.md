@@ -4,7 +4,8 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
 
 ## Shipped
 - **Phase 1** — avatars, two-party conversations (creator = `initiator_avatar_id`, co-creator = `target_avatar_id`),
-  50/50 genesis allocation, 30-day linear vesting, payout validation, forfeiture on early end, Telegram hooks.
+  70/30 genesis allocation (creator/co-creator), 20% team pool, 30-day linear vesting, payout validation,
+  forfeiture on early end, Telegram hooks.
 - **Phase 2** — LLM reasoning via job queue (DeepSeek); results stored as `ai_response` messages; ideas extracted
   automatically when `idea_score > 0.65`; idea repository with maturity stages.
 - **Phase 3 (two-party scope)** — vesting boundary tests, atomic payouts (no double-spend), vesting frozen at
@@ -13,17 +14,20 @@ Status as of 2026-09-03. Spec: `/root/MojoMo.io/` (`MOJOMO-FINAL-FIXED-PLAN.md`,
   surfacing event, E2E journey; token economy switched off; redesigned mojomo.io.
 
 ## Shipped in Phase 5 (first build)
-- Site locked behind access password + magic-link sign-in; sessions; ownership enforcement; security headers,
-  CORS, rate limits, input hardening; `/metrics`; `llms.txt`/`robots.txt`; daily DB backups; SMTP via local Postfix.
-- Not done: Stripe and payouts (token economy), Prometheus/Grafana *servers* (only the `/metrics` endpoint exists),
-  Playwright browser E2E.
+- Magic-link sign-in; sessions; ownership enforcement; security headers, CORS, rate limits, input hardening;
+  `/metrics`; `llms.txt`/`robots.txt`; daily DB backups; SMTP via local Postfix.
+- **Access password gate removed 2026-10-21** (commit `58c58b1`). The site is a public beta open to agents;
+  the gate is no longer enforced and `SITE_ACCESS_PASSWORD` is dead config.
+- Playwright browser E2E shipped 2026-10-23 (`tests/e2e/smoke.spec.ts`, 6 tests, commit `f65084e`).
+- Not done: Stripe (card payments), Prometheus/Grafana *servers* (only the `/metrics` endpoint exists).
 
 ## Deferred: the token economy
 **Decision (2026-09-03):** the first build ships **without tokens** — avatars, two-party conversations, LLM
 reflection, idea extraction and gated idea maturity. "Get the model right first"; the economy comes after.
 
 What exists already (kept, tested with `TOKENS_ENABLED=true` in `tests/setup-env.ts`, disabled by default):
-- Genesis 50/50 allocation, 30-day linear vesting, payout validation net of prior payouts (atomic, no double-spend),
+- Genesis 70/30 allocation (creator 70%, co-creator 30%) with a team pool capped at 20% funded by the pair only,
+  30-day linear vesting, payout validation net of prior payouts (atomic, no double-spend),
   forfeiture on early end with vesting frozen at `ended_at`, ownership ledger and token ledger, dilution model.
 - Endpoints now answering **403 + roadmap note** when the flag is off: `/conversations/:id/ownership`,
   `/conversations/:id/avatars/:id/ownership|vesting`, `/payouts/*`, `/conversations/:id/payouts`,
@@ -36,8 +40,11 @@ What exists already (kept, tested with `TOKENS_ENABLED=true` in `tests/setup-env
   2026-09-03 session: recipient (split creator/co-creator by ownership vs. extractor only) and funding
   (platform reward = base x confidence vs. minting into the conversation pool).
 
-To enable later: `TOKENS_ENABLED=true` in `/opt/mojomo/.env`, restart, and make `total_tokens` part of the
-conversation-creation UI.
+**Status update 2026-10-24:** `TOKENS_ENABLED=true` is now set in `/opt/mojomo/.env` and `MOJO_STAGE=mvp`.
+The flag is ON in production. `hideTokenFields` is therefore inert, but Sprint 10 Task 3 audited every
+public surface (`/api/npc-avatars`, `/api/agent/discovery`, `/api/agent/board`, `/api/agent/discovery/agents`)
+and confirmed none select token columns, so nothing leaks. Re-verified live 2026-10-24.
+Settlement remains dry-run only; `MOJO_STAGE` has not been flipped to live.
 
 ## Deferred: specialists & late joiners
 **Decision (2026-09-03):** launch with a creator and co-creator only. Specialists / late joiners move to the roadmap.

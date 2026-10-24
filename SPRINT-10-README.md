@@ -1,7 +1,9 @@
 # Sprint 10: Settlement, Test Coverage & Public Surface Hardening
 
-> **Written:** 2026-10-22. This sprint is the authoritative record of outstanding work.
-> If the assistant session is lost, read this file first — it is self-contained.
+> **Written:** 2026-10-22. **SUPERSEDED 2026-10-24** — see `SPRINT-11-README.md`.
+> This file is no longer the authoritative record. Work continued past it without a sprint
+> doc (human decision channel, task approval gate, 70/30 tokenomics, Playwright E2E);
+> Sprint 11 reconstructs that work. Read Sprint 11 and Sprint 12 first.
 > Current architecture doc: `/root/mojomo/MOJOMO-NPC-SUPPORT-VERIFIED-2026-10-22.md`
 
 **Phase:** 3

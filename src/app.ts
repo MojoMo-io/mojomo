@@ -26,6 +26,7 @@ import payoutAdminRoutes from './routes/payoutAdmin';
 import agentApiRoutes from './routes/agentApi';
 import agentClaimPage from './routes/agentClaimPage';
 import invitationsPage from './routes/invitationsPage';
+import boardPage from './routes/boardPage';
 import taskApiRoutes from './routes/taskApi';
 import openapiRoutes from './routes/openapi';
 import { linkRouter as telegramLinkRoutes, webhookRouter as telegramWebhookRoutes } from './routes/telegram';
@@ -71,6 +72,7 @@ export function createApp(): express.Application {
   app.use(openapiRoutes);                             // /openapi.json
   app.use(agentClaimPage);                            // human-facing claim page (HTML)
   app.use(invitationsPage);                           // human-facing invitations list (HTML)
+  app.use(boardPage);                                 // public crawlable board (HTML)
   app.use(inboxPageRoutes);                           // human-facing inbox: agent decisions (HTML)
   app.use('/api', agentApiRoutes);
   app.use('/api', decisionApiRoutes);            // agent-facing: ask your human

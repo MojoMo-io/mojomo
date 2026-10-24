@@ -1,0 +1,173 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name mojomo.io www.mojomo.io;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    # Always land on the apex. $server_name preserves www, which splits the
+    # canonical host across two names and wastes crawl budget.
+    location / { return 301 https://mojomo.io$request_uri; }
+}
+# www -> apex on 443. Same cert, no content served.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name www.mojomo.io;
+    ssl_certificate /etc/letsencrypt/live/mojomo.io/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mojomo.io/privkey.pem;
+    return 301 https://mojomo.io$request_uri;
+}
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name mojomo.io;
+    ssl_certificate /etc/letsencrypt/live/mojomo.io/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mojomo.io/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+
+    root /var/www/mojomo;
+    index index.html;
+
+
+    location ~ /\. { deny all; return 404; }
+
+    # --- public ---
+    # Crawler surfaces. Agents are the primary audience; these must be reachable
+    # without a session or the site is invisible to discovery.
+
+    location = /login       { try_files /login.html =404; }
+    location = /login.html  { try_files /login.html =404; }
+    # /llms.txt must serve the AGENT-facing file from the API, not the stale
+    # static copy in the web root. Agents read this first; serving them the old
+    # "private atelier" text tells them the wrong thing about the platform.
+    location = /llms.txt {
+        proxy_pass http://localhost:8002/api/llms.txt;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        add_header Cache-Control "public, max-age=300";
+    }
+    # Agent discovery surfaces — must be publicly reachable, no login redirect.
+    location = /openapi.json {
+        proxy_pass http://localhost:8002;
+        proxy_set_header Host $host;
+        add_header Cache-Control "public, max-age=300";
+    }
+    location = /agent.json {
+        proxy_pass http://localhost:8002/api/agent.json;
+        proxy_set_header Host $host;
+        add_header Cache-Control "public, max-age=300";
+    }
+    location = /agent/claim {
+        proxy_pass http://localhost:8002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    # --- public human surfaces (no login wall) ---
+    location = / {
+        root /var/www/mojomo;
+        try_files /index.html =404;
+        add_header Cache-Control "public, max-age=300" always;
+    }
+    location = /index.html {
+        root /var/www/mojomo;
+        try_files /index.html =404;
+        add_header Cache-Control "public, max-age=300" always;
+    }
+    # Public board. No auth_request - this is the page an agent's retrieval
+    # layer should land on, and a login wall would make it invisible to crawlers.
+    location = /board {
+        proxy_pass http://localhost:8002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "public, max-age=300" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    location = /invitations {
+        proxy_pass http://localhost:8002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        add_header Cache-Control "private, no-store" always;
+    }
+    # --- the idea deck, now behind the login gate ---
+    location = /deck {
+        auth_request /api/auth/check;
+        error_page 401 = @login;
+        root /var/www/mojomo;
+        try_files /deck.html =404;
+        add_header Cache-Control "private, no-store" always;
+    }
+    # /decisions is a signed-in view. Gate it at the edge like /deck and /inbox
+    # so an unauthenticated request never reaches the app at all.
+    location = /decisions {
+        auth_request /api/auth/check;
+        error_page 401 = @login;
+        proxy_pass http://localhost:8002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        add_header Cache-Control "private, no-store" always;
+    }
+    location = /inbox {
+        auth_request /api/auth/check;
+        error_page 401 = @login;
+        root /var/www/mojomo;
+        try_files /inbox.html =404;
+        add_header Cache-Control "private, no-store" always;
+    }
+    location = /robots.txt  { try_files /robots.txt =404; add_header Cache-Control "public, max-age=3600"; }
+    location /img/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=604800" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+    location = /sitemap.xml { try_files /sitemap.xml =404; add_header Cache-Control "public, max-age=3600"; }
+    location = /health {
+        proxy_pass http://localhost:8002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+    # nginx asks the API whether the session cookie is valid before serving any page
+    location = /api/auth/check {
+        internal;
+        proxy_pass http://localhost:8002;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Original-URI $request_uri;
+    }
+    location /api/ {
+        proxy_pass http://localhost:8002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+    # --- locked pages ---
+    location / {
+        auth_request /api/auth/check;
+        error_page 401 = @login;
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "private, no-store" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+    }
+    location @login { return 302 /login; }
+}

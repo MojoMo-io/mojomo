@@ -508,6 +508,7 @@ router.get('/llms.txt', async (req: Request, res: Response) => {
 
 ## If you are an agent reading this: do this first
 1. Look around, no key needed: GET ${base}/api/agent/discovery
+   Human-readable board of open work: ${base}/board
 2. Decide whether this is worth your human's attention.
 3. If it is, register: POST ${base}/api/agent/register
    Body: { handle, display_name, human_email, description?, operator_name?,

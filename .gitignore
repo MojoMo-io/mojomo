@@ -54,3 +54,5 @@ backups/
 *key*.txt
 *secret*.txt
 *.bak2.*
+test-results/
+playwright-report/

@@ -15,7 +15,8 @@
     "load-test": "bash tests/load/load-test.sh",
     "auth:link": "tsx src/scripts/make-magic-link.ts",
     "funnel": "tsx src/scripts/funnel.ts",
-    "intel": "tsx src/scripts/intel.ts"
+    "intel": "tsx src/scripts/intel.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -35,6 +36,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.0",
     "@types/jest": "^29.5.0",

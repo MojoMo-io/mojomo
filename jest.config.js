@@ -5,7 +5,7 @@ module.exports = {
   setupFiles: ['<rootDir>/tests/setup-env.ts'],
   globalSetup: '<rootDir>/tests/global-setup.ts',
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
-  testPathIgnorePatterns: ['/node_modules/', 'setup-env.ts', '/tests/load/'],
+  testPathIgnorePatterns: ['/node_modules/', 'setup-env.ts', '/tests/load/', '/tests/e2e/'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverageFrom: [
     'src/**/*.ts',

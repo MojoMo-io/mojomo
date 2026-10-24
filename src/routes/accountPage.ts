@@ -26,28 +26,39 @@ const shell = (body: string) => `<!doctype html>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#0F1115;--fg:#F5F5F0;--muted:#8A8F98;--accent:#E8B44A;--card:#171A20;--line:#262B33}
+  :root{
+    --bone:#EDE4D3;--ink:#2A2620;--muted:#8A7E6C;--ochre:#B8873F;--rust:#9C5A3C;
+    --sand:#D6C6A8;--teal:#5E7F76;
+    --line:rgba(42,38,32,.14);--line-2:rgba(42,38,32,.28);
+    --serif:"Cormorant Garamond",Georgia,serif;
+    --sans:"Inter",system-ui,-apple-system,sans-serif;
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font-family:"Inter",system-ui,sans-serif;
-       font-weight:300;line-height:1.6;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:760px;margin:0 auto;padding:56px 22px 90px}
-  h1{font-family:"Cormorant Garamond",Georgia,serif;font-weight:400;font-size:clamp(30px,5vw,44px);margin:0 0 10px}
-  .sub{color:var(--muted);font-size:15px;margin:0 0 34px}
-  .agent{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:20px;margin-bottom:16px}
-  .agent h2{font-size:17px;font-weight:500;margin:0 0 2px}
-  .handle{color:var(--muted);font-size:13px;margin:0 0 14px}
-  .row{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+  body{margin:0;background:var(--bone);color:var(--ink);font-family:var(--sans);
+       font-weight:300;font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:720px;margin:0 auto;padding:56px 22px 90px}
+  h1{font-family:var(--serif);font-weight:300;font-size:clamp(34px,6vw,52px);line-height:1.04;
+     letter-spacing:-.015em;margin:0 0 14px}
+  .sub{color:var(--muted);font-size:15px;margin:0 0 34px;max-width:52ch}
+  .agent{border-top:1px solid var(--line-2);padding:24px 0 26px}
+  .agent h2{font-family:var(--serif);font-weight:400;font-size:26px;margin:0 0 2px;letter-spacing:-.01em}
+  .handle{color:var(--muted);font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 16px}
+  .row{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid var(--line);font-size:13.5px}
   .row .k{color:var(--muted)}
-  .key{background:#0B0D10;border:1px solid var(--line);border-radius:8px;padding:12px;
-       font-family:ui-monospace,monospace;font-size:13px;word-break:break-all;margin:12px 0 0}
-  .btn{background:var(--accent);color:#0F1115;border:none;border-radius:7px;padding:9px 15px;
-       font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:12px}
-  .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
-  .btn:hover{filter:brightness(1.08)}
-  .warn{color:var(--accent);font-size:12.5px;margin:10px 0 0}
-  .note{color:var(--muted);font-size:13px;margin:10px 0 0}
+  .key{background:rgba(42,38,32,.045);border:1px solid var(--line-2);padding:14px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all;margin:14px 0 0}
+  .btn{background:var(--ink);color:var(--bone);border:1px solid var(--ink);padding:13px 26px;
+       font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;
+       font-family:var(--sans);margin-top:16px;transition:all .22s cubic-bezier(.2,.8,.2,1)}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line-2)}
+  .btn:hover{background:var(--ochre);border-color:var(--ochre);color:#fff;transform:translateY(-1px)}
+  .btn.ghost:hover{background:transparent;border-color:var(--ochre);color:var(--ochre);transform:translateY(-1px)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .warn{color:var(--rust);font-size:12.5px;margin:10px 0 0}
+  .note{color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.7}
   .empty{color:var(--muted);font-style:italic;padding:26px 0}
-  a{color:var(--accent)}
+  a{color:var(--ochre);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .18s}
+  a:hover{border-bottom-color:var(--ochre)}
 </style></head><body><div class="wrap">${body}</div></body></html>`;
 
 router.get('/account', async (req: Request, res: Response) => {

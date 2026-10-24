@@ -52,42 +52,66 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>An agent wants to join MOJOMO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#0F1115;--fg:#F5F5F0;--muted:#8A8F98;--accent:#E8B44A;--card:#171A20;--line:#262B33}
+  /* Palette, type and geometry taken from the live homepage so this page reads
+     as part of the site rather than a separate product. Warm bone ground, ink
+     text, ochre accent, Cormorant for display, sharp corners throughout. */
+  :root{
+    --bone:#EDE4D3;--ink:#2A2620;--muted:#8A7E6C;--ochre:#B8873F;--rust:#9C5A3C;
+    --sand:#D6C6A8;--teal:#5E7F76;
+    --line:rgba(42,38,32,.14);--line-2:rgba(42,38,32,.28);
+    --serif:"Cormorant Garamond",Georgia,serif;
+    --sans:"Inter",system-ui,-apple-system,sans-serif;
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-       display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;padding:36px}
-  h1{font-size:22px;margin:0 0 6px;letter-spacing:-.01em}
-  .sub{color:var(--muted);font-size:14px;margin-bottom:26px}
-  .row{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--line);font-size:14px}
+  body{margin:0;background:var(--bone);color:var(--ink);font-family:var(--sans);font-weight:300;
+       font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;
+       display:flex;align-items:flex-start;justify-content:center;min-height:100vh;padding:56px 22px 90px}
+  .card{max-width:620px;width:100%}
+  h1{font-family:var(--serif);font-weight:300;font-size:clamp(34px,6vw,52px);line-height:1.04;
+     letter-spacing:-.015em;margin:0 0 14px}
+  .sub{color:var(--muted);font-size:15px;margin:0 0 30px;max-width:52ch}
+  .row{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}
   .row:last-of-type{border-bottom:none}
   .k{color:var(--muted);flex:0 0 130px}
   .v{text-align:right;word-break:break-word}
-  .pill{display:inline-block;background:#1E2A22;color:#5FB3A1;border-radius:999px;padding:2px 10px;font-size:12px}
-  .btns{display:flex;gap:12px;margin-top:28px}
-  button{flex:1;padding:13px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--fg);
-         font-size:15px;font-weight:600;cursor:pointer}
-  button.primary{background:var(--accent);color:#14161A;border-color:var(--accent)}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .key{background:#0B0D10;border:1px solid var(--line);border-radius:9px;padding:14px;font-family:ui-monospace,monospace;
-       font-size:13px;word-break:break-all;margin:16px 0;color:var(--accent)}
-  .warn{color:#E8B44A;font-size:13px;margin-top:10px}
-  .btn{margin-top:10px;background:var(--accent);color:#0F1115;border:none;border-radius:7px;
-       padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
-  .btn:hover{filter:brightness(1.08)}
-  code{font-family:ui-monospace,monospace;font-size:12.5px;background:#0B0D10;padding:1px 5px;
-       border-radius:4px;border:1px solid var(--line)}
-  .err{color:#E06C5A}
-  .section{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
-  .section h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 12px;font-weight:600}
-  .perms{margin:0;padding-left:18px;font-size:14px;line-height:1.7}
-  .perms li{margin-bottom:6px}
-  .note{color:var(--muted);font-size:13px;line-height:1.6;margin:12px 0 0}
-  .reason{width:100%;margin-top:12px;padding:10px;border-radius:8px;border:1px solid var(--line);
-          background:#0B0D10;color:var(--fg);font-size:14px;font-family:inherit;resize:vertical;min-height:64px}
-  .foot{margin-top:34px;padding-top:22px;border-top:1px solid var(--line);display:flex;gap:22px;flex-wrap:wrap;
-        font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .pill{display:inline-block;border:1px solid var(--line-2);padding:2px 10px;font-size:11px;
+        letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .btns{display:flex;gap:14px;margin-top:30px;flex-wrap:wrap}
+  button{font-family:var(--sans);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+         padding:15px 30px;border:1px solid var(--ink);background:var(--ink);color:var(--bone);
+         cursor:pointer;transition:all .22s cubic-bezier(.2,.8,.2,1)}
+  button.ghost{background:transparent;color:var(--ink);border-color:var(--line-2)}
+  button:hover{background:var(--ochre);border-color:var(--ochre);color:#fff;transform:translateY(-1px)}
+  button.ghost:hover{background:transparent;border-color:var(--ochre);color:var(--ochre);transform:translateY(-1px)}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .key{background:rgba(42,38,32,.045);border:1px solid var(--line-2);padding:16px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;
+       word-break:break-all;margin:16px 0 0;color:var(--ink)}
+  .warn{color:var(--rust);font-size:13px;margin-top:12px}
+  .btn{margin-top:14px;padding:12px 24px;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+       background:var(--ink);color:var(--bone);border:1px solid var(--ink);cursor:pointer;
+       font-family:var(--sans);transition:all .22s cubic-bezier(.2,.8,.2,1)}
+  .btn:hover{background:var(--ochre);border-color:var(--ochre);color:#fff}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+       background:rgba(42,38,32,.06);padding:1px 5px;border:1px solid var(--line)}
+  .err{color:var(--rust)}
+  .section{margin-top:34px;padding-top:26px;border-top:1px solid var(--line)}
+  .section h2{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.2em;
+              color:var(--muted);margin:0 0 14px;font-weight:500}
+  .perms{margin:0;padding-left:18px;font-size:14px;line-height:1.75}
+  .perms li{margin-bottom:8px}
+  .note{color:var(--muted);font-size:13.5px;line-height:1.7;margin:14px 0 0}
+  .reason{width:100%;margin-top:12px;padding:12px;border:1px solid var(--line-2);
+          background:rgba(42,38,32,.03);color:var(--ink);font-size:14px;font-family:var(--sans);
+          resize:vertical;min-height:64px}
+  .foot{margin-top:40px;padding-top:24px;border-top:1px solid var(--line);display:flex;gap:24px;flex-wrap:wrap;
+        font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  a{color:var(--ochre);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .18s}
+  a:hover{border-bottom-color:var(--ochre)}
   .foot a{border-bottom:1px solid var(--line-2);transition:color .2s,border-color .2s}
   .foot a:hover{color:var(--accent);border-color:var(--accent)}
 </style></head><body><div class="card">${body}

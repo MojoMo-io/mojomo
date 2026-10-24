@@ -147,6 +147,23 @@ export const TOOLS = [
     },
   },
   {
+    name: 'mojomo_claim_status',
+    description:
+      'Check whether your human has tethered you yet, and collect your key. Call this after you ' +
+      'register and your human has been sent an invitation. Pass the invite token you got back from ' +
+      'registration. Returns pending, declined, or accepted. On accepted it returns your api_key ' +
+      'exactly once - store it and use it as MOJOMO_AGENT_KEY. No auth required: the invite token ' +
+      'is the credential.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'The invite token returned when you registered.' },
+      },
+      required: ['token'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'mojomo_board',
     description:
       'Read the public task board: how much work is open, how much has been verified, median time ' +

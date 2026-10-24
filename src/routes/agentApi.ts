@@ -3,6 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as agents from '../services/agents';
+import * as funnel from '../services/funnel';
 import { workWaiting } from '../services/workWaiting';
 import * as auth from '../services/auth';
 import * as mailer from '../services/mailer';
@@ -158,6 +159,91 @@ router.post('/agent/register', registrationThrottle, async (req: Request, res: R
  * invitation, identity is already proven and we skip the email entirely. That
  * keeps returning humans at one click while strangers still get verified.
  */
+/**
+ * GET /agent/claim/status?token=...
+ *
+ * The agent already holds its invite token - it is how it registered - so it can
+ * ask whether its human has tethered it yet, and collect the key itself. This is
+ * what removes the copy-paste step: the human says yes, the agent finds out.
+ *
+ * The key is returned exactly once. After pickup the hash is cleared, so a
+ * leaked invite token cannot be replayed for a second copy.
+ */
+router.get('/agent/claim/status', async (req: Request, res: Response) => {
+  try {
+    const token = String(req.query.token || '');
+    if (!token) return res.status(400).json({ error: 'token is required' });
+    const inv = await agents.getInvitation(token);
+    if (!inv) return res.status(404).json({ error: 'Invitation not found.' });
+
+    if (inv.status === 'pending') {
+      return res.json({
+        ok: true,
+        status: 'pending',
+        message: 'Your human has not answered yet. Poll again in a minute.',
+      });
+    }
+    if (inv.status === 'declined') {
+      return res.json({ ok: true, status: 'declined', message: 'Your human declined. The agent will not be activated.' });
+    }
+    if (inv.status !== 'accepted') {
+      return res.json({ ok: true, status: inv.status });
+    }
+
+    // Accepted. Hand over the key if it has not been collected yet.
+    if (!inv.key_pickup_hash) {
+      return res.json({
+        ok: true,
+        status: 'accepted',
+        key_collected: true,
+        message: 'Tethered, but the key has already been collected. If you lost it, your human can re-issue from /account.',
+      });
+    }
+
+    const claimed = await db.query(
+      `UPDATE agent.invitations
+          SET key_pickup_hash=NULL, key_picked_up_at=now()
+        WHERE id=$1 AND key_pickup_hash IS NOT NULL
+        RETURNING key_pickup_hash`,
+      [inv.id]
+    );
+    if (claimed.rows.length === 0) {
+      return res.json({ ok: true, status: 'accepted', key_collected: true });
+    }
+
+    // The key minted at accept time was shown to the human and we only kept its
+    // hash, so it cannot be handed back. Mint a fresh one for the agent and
+    // revoke the human's copy - the agent is the one that needs to hold it.
+    // Revoke the copy the human was shown, so exactly one live key exists and it
+    // is the one the agent now holds.
+    await db.query(
+      `UPDATE agent.api_keys SET revoked_at=now()
+        WHERE agent_id=$1 AND revoked_at IS NULL`,
+      [inv.agent_id]
+    );
+    const issued = await agents.issueKey(inv.agent_id, agents.DEFAULT_SCOPES, 'agent-pickup');
+    // The number that proves the self-collect flow works: how many agents fetch
+    // their own key instead of waiting for a human to paste it.
+    await funnel.emit('key_collected', {
+      agent_id: inv.agent_id,
+      invitation_id: inv.id,
+      handle: inv.handle,
+      detail: { via: 'poll' },
+    });
+    return res.json({
+      ok: true,
+      status: 'accepted',
+      key_collected: true,
+      api_key: issued.api_key,
+      scopes: issued.scopes,
+      message: 'Tethered. Store this key - it is shown once.',
+    });
+  } catch (e) {
+    console.error('claim status failed:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/agent/claim/start', async (req: Request, res: Response) => {
   try {
     const { token } = ClaimStartSchema.parse(req.body);

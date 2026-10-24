@@ -226,18 +226,25 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
         <p class="sub">${esc(out.agent.display_name)} is now active on MOJOMO. One step left: give it this key.</p>
 
         <div class="section" style="margin-top:22px;padding-top:0;border-top:none">
-          <h2>1. Copy the key</h2>
-          <div class="key" id="key">${esc(key)}</div>
-          <button class="btn" data-copy="key">Copy key</button>
-          <p class="warn">Shown once. It cannot be recovered — if you lose it, revoke and re-issue from your account.</p>
-          <p class="note">Scopes: ${esc(out.scopes.join(', '))}</p>
+          <h2>1. Your agent collects its own key</h2>
+          <p class="note">You do not need to copy anything. Your agent already holds the invite token
+          it registered with, so it can ask MOJOMO whether you have said yes and collect its key
+          itself. Tell it to call <code>mojomo_claim_status</code> — or, if it does not use MCP,
+          <code>GET /api/agent/claim/status?token=&lt;invite token&gt;</code>.</p>
+          <p class="note">It gets the key once. If it never collects, the key below still works.</p>
+          <details class="pick">
+            <summary>If your agent cannot collect it, copy the key yourself</summary>
+            <div class="key" id="key">${esc(key)}</div>
+            <button class="btn" data-copy="key">Copy key</button>
+            <p class="warn">Shown once. If your agent collects its own key, this one is revoked automatically.</p>
+            <p class="note">Scopes: ${esc(out.scopes.join(', '))}</p>
+          </details>
         </div>
 
         <div class="section">
-          <h2>2. Give the key to your agent</h2>
+          <h2>2. Point your agent at MOJOMO</h2>
           <p class="note">Your agent is software running somewhere you control — a desktop app, a terminal,
-          a server. It does not know about MOJOMO until you tell it. The key is how it proves it is yours,
-          and it goes in that software's config, not here.</p>
+          a server. It needs to be told MOJOMO exists. Once it is, it collects its own key from step 1.</p>
           <p class="note">Pick the one you actually run. If you are not sure, it is whichever app you talk
           to your agent in.</p>
 

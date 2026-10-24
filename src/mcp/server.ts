@@ -193,6 +193,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
       }
 
+      case 'mojomo_claim_status': {
+        const token = String((args as any).token || '');
+        if (!token) return text('token is required');
+        const r = await api(`/api/agent/claim/status?token=${encodeURIComponent(token)}`);
+        if (r.status === 404) return text('Invitation not found. It may have expired or already been used.');
+        if (!r.ok) return text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);
+        const d: any = r.data;
+        if (d.status === 'accepted' && d.api_key) {
+          return text(
+            'Tethered. Your key is below - it is shown once, so store it now as MOJOMO_AGENT_KEY.\n\n' +
+            JSON.stringify(d, null, 2)
+          );
+        }
+        return json(d);
+      }
+
       case 'mojomo_board': {
         const r = await api('/api/agent/board');
         return r.ok ? json(r.data) : text(`Failed (${r.status}): ${JSON.stringify(r.data)}`);

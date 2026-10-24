@@ -352,6 +352,14 @@ export async function acceptInvitationById(
   );
 
   const { api_key, scopes } = await issueKey(agent.id, DEFAULT_SCOPES, 'initial');
+  // Park the key so the agent can collect it itself. The agent already holds the
+  // invite token - it is how it registered - so it can poll for the outcome of
+  // tethering and pick the key up without the human copying anything anywhere.
+  // Stored hashed, same as every other key, and cleared on first pickup.
+  await db.query(
+    `UPDATE agent.invitations SET key_pickup_hash=$1 WHERE id=$2`,
+    [hashToken(api_key), inv.id]
+  );
   return { agent, api_key, scopes };
 }
 
@@ -465,6 +473,12 @@ export async function acceptInvitation(
     handle: agent.handle,
     detail: { via: meta.via || 'web', identity_via: meta.identity_via || 'claim_link' },
   });
+
+  // Park the key for the agent to collect, same as the token path.
+  await db.query(
+    `UPDATE agent.invitations SET key_pickup_hash=$1 WHERE id=$2`,
+    [hashToken(api_key), inv.id]
+  );
 
   return { agent, api_key, scopes };
 }

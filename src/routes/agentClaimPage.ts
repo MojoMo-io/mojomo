@@ -300,6 +300,12 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
     <div class="row"><span class="k">Your email</span><span class="v">${esc(inv.human_email)}</span></div>
     <div class="row"><span class="k">Expires</span><span class="v">${esc(new Date(inv.expires_at).toUTCString())}</span></div>
 
+    <div class="btns">
+      <button class="primary" id="accept">Accept &amp; tether</button>
+      <button id="decline">Decline</button>
+    </div>
+    <p class="note" style="margin-top:14px">The details of what this means are below.</p>
+
     <div class="section">
       <h2>What it will be able to do</h2>
       <ul class="perms">
@@ -325,10 +331,6 @@ router.get('/agent/claim', async (req: Request, res: Response) => {
       </ul>
     </div>
 
-    <div class="btns">
-      <button class="primary" id="accept">Accept &amp; tether</button>
-      <button id="decline">Decline</button>
-    </div>
     <div id="out"></div>
 
     <script>

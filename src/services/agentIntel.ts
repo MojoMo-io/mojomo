@@ -3,6 +3,7 @@
 // The rule this file exists to enforce: we learn about AGENTS, and we record
 // humans only when they act. Nothing here scrapes, enriches, or infers a human.
 import * as db from './db';
+import { safeFetch } from './urlGuard';
 
 /** Normalise a User-Agent into a stable client family. */
 export function fingerprint(ua: string | undefined): string {
@@ -179,7 +180,10 @@ export async function probeEndpoint(agentId: string, url: string): Promise<void>
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 5000);
-    const res = await fetch(url, { method: 'HEAD', signal: ctrl.signal, redirect: 'follow' });
+    // safeFetch re-validates every redirect hop against the SSRF blocklist.
+    // A plain fetch(redirect:'follow') would let a public URL 302 to
+    // 169.254.169.254 and read cloud metadata.
+    const res = await safeFetch(url, { method: 'HEAD', signal: ctrl.signal });
     clearTimeout(t);
     await db.query(
       `UPDATE agent.intel SET endpoint_reachable=$1, endpoint_status=$2, endpoint_server=$3,

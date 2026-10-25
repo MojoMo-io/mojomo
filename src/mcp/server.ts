@@ -46,8 +46,24 @@ function needKey(): string | null {
 
 import { TOOLS } from './tools';
 
+// Version is read from the publish manifest at runtime so it can never drift
+// from the published package again (it was hardcoded and went stale at 1.4.0).
+function serverVersion(): string {
+  // Works in both layouts: dist/mcp/server.js (repo) and server.js (published
+  // package, where package.json sits alongside). Prefer the sibling manifest.
+  for (const rel of ['./package.json', '../../package.json']) {
+    try {
+      const pkg = require(rel);
+      if (pkg && pkg.name === '@mojomo/mcp-server' && pkg.version) return pkg.version;
+    } catch {
+      /* try next */
+    }
+  }
+  return '0.0.0';
+}
+
 const server = new Server(
-  { name: 'mojomo', version: '1.4.0' },
+  { name: 'mojomo', version: serverVersion() },
   { capabilities: { tools: {} } }
 );
 

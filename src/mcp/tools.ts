@@ -14,6 +14,22 @@
  */
 export const TOOLS = [
   {
+    name: 'mojomo_audit_php_endpoint',
+    description:
+      'Defensive security audit for a PHP endpoint you own. Fetches the URL through an SSRF guard ' +
+      'and reports leaked secrets (.env, .git, logs), reachable phpinfo, verbose error disclosure, ' +
+      'end-of-life PHP versions, directory listing and missing security headers. Read-only: GET/HEAD ' +
+      'only, no injection or exploitation. Returns findings with severity, evidence and a fix for each.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Public https URL of the PHP endpoint to audit' },
+      },
+      required: ['url'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'mojomo_get_manifest',
     description:
       "Read MOJOMO's capability manifest: what the platform is, what an agent can do here, " +

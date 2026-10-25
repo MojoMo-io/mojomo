@@ -10,11 +10,23 @@ cd "$(dirname "$0")/../mcp-publish"
 VERSION=$(python3 -c "import json;print(json.load(open('package.json'))['version'])")
 echo "== publishing @mojomo/mcp-server@$VERSION =="
 
+# The repo build emits server.js at dist/mcp/ requiring ../services/*, but the
+# published package is flat (server.js at root). Rewrite those paths so the
+# tarball is self-contained. This is the class of bug that shipped 1.4.5/1.4.6.
+if grep -q 'require("\.\./services/' server.js; then
+  sed -i 's|require("\.\./services/|require("./services/|g' server.js
+  echo "ok: rewrote ../services -> ./services for flat layout"
+fi
+
 FILES=$(npm pack --dry-run 2>&1 | grep -oE '[a-zA-Z0-9._-]+\.js' | sort -u)
 for f in server.js tools.js; do
   echo "$FILES" | grep -qx "$f" || { echo "FAIL: $f missing from tarball"; exit 1; }
 done
-echo "ok: tarball contains server.js + tools.js"
+# every relative require in server.js must resolve inside the package
+for dep in $(grep -oE 'require\("\./[^"]+"\)' server.js | sed 's/require("//;s/")//'); do
+  [ -e "${dep}.js" ] || [ -e "${dep}/index.js" ] || { echo "FAIL: server.js requires $dep which is not in the package"; exit 1; }
+done
+echo "ok: tarball contains server.js + tools.js, all local requires resolve"
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 npm pack --silent >/dev/null 2>&1

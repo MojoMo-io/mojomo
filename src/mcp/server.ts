@@ -45,6 +45,7 @@ function needKey(): string | null {
 }
 
 import { TOOLS } from './tools';
+import { auditPhpEndpoint } from '../services/phpAudit';
 
 // Version is read from the publish manifest at runtime so it can never drift
 // from the published package again (it was hardcoded and went stale at 1.4.0).
@@ -111,6 +112,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const limit = Math.min(Number((args as any).limit) || 50, 100);
         const avatars = (r.data.avatars || []).slice(0, limit);
         return json({ count: avatars.length, avatars });
+      }
+
+      case 'mojomo_audit_php_endpoint': {
+        const target = String((args as any).url || '').trim();
+        if (!target) return text('Missing required argument: url');
+        const result = await auditPhpEndpoint(target);
+        return json(result);
       }
 
       case 'mojomo_ask_human': {

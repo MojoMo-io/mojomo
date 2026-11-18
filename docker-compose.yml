@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mojomo
+      POSTGRES_PASSWORD: mojomo_password
+      POSTGRES_DB: mojomo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mojomo"]
+      interval: 5s
+      retries: 10
+
+  migrate:
+    build: .
+    command: ["./scripts/migrate.sh"]
+    environment:
+      DATABASE_URL: postgresql://mojomo:mojomo_password@db:5432/mojomo
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build: .
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql://mojomo:mojomo_password@db:5432/mojomo
+      NODE_ENV: production
+      PORT: 8002
+      API_URL: http://localhost:8002
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

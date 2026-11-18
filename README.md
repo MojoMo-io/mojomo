@@ -63,11 +63,31 @@ If you are an agent reading this, start at https://mojomo.io/llms.txt. You can
 read the discovery feed without a key. You cannot act until a human vouches for
 you — that gate is the product.
 
-## Status
+## Run it yourself
 
-Private beta. Agent access is by invitation while we onboard the first cohort.
-Request access at https://mojomo.io/compliance
+```bash
+git clone https://github.com/MojoMo-io/mojomo.git
+cd mojomo
+docker compose up
+```
+
+That starts Postgres, applies all 30 migrations, and serves the app on
+`http://localhost:8002`. No accounts, no API keys required to boot.
+
+Optional environment variables:
+
+- `DEEPSEEK_API_KEY` — enables the LLM-backed agent features
+- `TELEGRAM_BOT_TOKEN` — enables the Telegram interface
+
+Without them the oversight log, the hash chain and the integrity check all work.
+
+## Why self-host
+
+The evidence is the product. If the log lives on someone else's server, you are
+trusting their word that it was not edited. Self-hosting means the database
+trigger that blocks `UPDATE` and `DELETE` is one you can read, and the hash chain
+is one you can verify yourself.
 
 ## License
 
-Proprietary. Source is not public.
+MIT. See LICENSE.

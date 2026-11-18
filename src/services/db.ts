@@ -4,12 +4,18 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+// DATABASE_URL wins when set (standard for Docker, Vercel, Neon, Railway).
+// Discrete DB_* vars remain supported for the existing deployment.
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'mojomo',
-  user: process.env.DB_USER || 'mojomo',
-  password: process.env.DB_PASSWORD || 'mojomo_password',
+  ...(process.env.DATABASE_URL
+    ? { connectionString: process.env.DATABASE_URL }
+    : {
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        database: process.env.DB_NAME || 'mojomo',
+        user: process.env.DB_USER || 'mojomo',
+        password: process.env.DB_PASSWORD || 'mojomo_password',
+      }),
   max: parseInt(process.env.DB_POOL_MAX || '20'),
   // Fail fast instead of hanging forever if the pool is exhausted (e.g. a transaction waiting on a
   // row lock while another query needs a connection).

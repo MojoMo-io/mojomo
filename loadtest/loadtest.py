@@ -22,7 +22,7 @@ def register(i):
     return call("POST","/api/agent/register",{
         "handle":f"loadtest-{i}-{int(time.time())}",
         "display_name":f"Load Test {i}",
-        "human_email":"magnusmaynard@gmail.com",
+        "human_email":"loadtest@example.com",
         "description":"synthetic load test agent"})
 
 def authed(key, path):

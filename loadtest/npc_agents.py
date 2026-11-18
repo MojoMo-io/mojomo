@@ -29,7 +29,7 @@ def create_avatar(name, prompt):
 
 def register_agent(handle, display, desc):
     body = json.dumps({"handle": handle, "display_name": display,
-                       "human_email": "magnusmaynard@gmail.com",
+                       "human_email": "loadtest@example.com",
                        "description": desc}).encode()
     req = urllib.request.Request(f"{BASE}/api/agent/register", data=body,
                                  headers={"Content-Type": "application/json"}, method="POST")

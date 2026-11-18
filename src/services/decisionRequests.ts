@@ -4,6 +4,7 @@
 // the whole protocol — the agent polls it, the human answers it, and the answer
 // is what the agent reads back.
 import * as db from './db';
+import * as decisionEvents from './decisionEvents';
 
 export type Kind = 'approve' | 'choose' | 'confirm' | 'freeform';
 export type Status = 'pending' | 'answered' | 'expired' | 'withdrawn';
@@ -164,6 +165,11 @@ export async function create(input: {
       .catch(e => console.error('decision notify failed:', e?.message || e));
   }
 
+  await decisionEvents.record({
+    decisionId: created.id, agentId: input.agentId, humanUserId: a.tether_user_id,
+    event: 'created', actor: 'agent',
+    detail: { kind, title, urgency: created.urgency, expires_at: created.expires_at },
+  });
   return created;
 }
 
@@ -260,6 +266,13 @@ export async function answer(input: {
     }
 
     await client.query('COMMIT');
+
+    await decisionEvents.record({
+      decisionId: answered.id, agentId: answered.agent_id,
+      humanUserId: input.userId, event: 'answered', actor: 'human',
+      detail: { answer: answered.answer, note: answered.answer_note ?? null,
+                task_id: answered.task_id ?? null },
+    });
     return answered;
   } catch (e) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -276,15 +289,26 @@ export async function withdraw(id: string, agentId: string) {
     [id, agentId]
   );
   if (!res.rows[0]) throw new DecisionError('NOT_FOUND', 'No pending request with that id.', 404);
-  return res.rows[0];
+  const w = res.rows[0];
+  await decisionEvents.record({
+    decisionId: w.id, agentId: w.agent_id, humanUserId: w.tether_user_id,
+    event: 'withdrawn', actor: 'agent', detail: {},
+  });
+  return w;
 }
 
 /** Sweep expired requests. Called on a timer. */
 export async function expireStale(): Promise<number> {
   const res = await db.query(
     `UPDATE agent.decision_requests SET status='expired', updated_at=now()
-      WHERE status='pending' AND expires_at < now() RETURNING id`
+      WHERE status='pending' AND expires_at < now() RETURNING id, agent_id, tether_user_id`
   );
+  for (const row of res.rows) {
+    await decisionEvents.record({
+      decisionId: row.id, agentId: row.agent_id, humanUserId: row.tether_user_id,
+      event: 'expired', actor: 'system', detail: {},
+    });
+  }
   return res.rowCount || 0;
 }
 

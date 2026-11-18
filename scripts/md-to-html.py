@@ -64,21 +64,38 @@ def convert(md):
             out.append('<blockquote>' + inline(' '.join(buf)) + '</blockquote>')
             continue
 
-        # list: gather consecutive '- ' lines
+        # list: gather consecutive '- ' lines, including indented continuations
         if s.startswith('- '):
             out.append('<ul>')
-            while i < n and lines[i].strip().startswith('- '):
-                out.append('<li>' + inline(lines[i].strip()[2:]) + '</li>')
+            while i < n:
+                cur = lines[i]
+                if not cur.strip().startswith('- '):
+                    break
+                item = [cur.strip()[2:]]
                 i += 1
+                # continuation lines are indented and not a new bullet
+                while i < n and lines[i].strip() and lines[i][:1] in (' ', '\t') \
+                        and not lines[i].strip().startswith('- '):
+                    item.append(lines[i].strip())
+                    i += 1
+                out.append('<li>' + inline(' '.join(item)) + '</li>')
             out.append('</ul>')
             continue
 
         # numbered list
         if re.match(r'^\d+\.\s', s):
             out.append('<ol>')
-            while i < n and re.match(r'^\d+\.\s', lines[i].strip()):
-                out.append('<li>' + inline(re.sub(r'^\d+\.\s+', '', lines[i].strip())) + '</li>')
+            while i < n:
+                cur = lines[i]
+                if not re.match(r'^\d+\.\s', cur.strip()):
+                    break
+                item = [re.sub(r'^\d+\.\s+', '', cur.strip())]
                 i += 1
+                while i < n and lines[i].strip() and lines[i][:1] in (' ', '\t') \
+                        and not re.match(r'^\d+\.\s', lines[i].strip()):
+                    item.append(lines[i].strip())
+                    i += 1
+                out.append('<li>' + inline(' '.join(item)) + '</li>')
             out.append('</ol>')
             continue
 
@@ -88,6 +105,9 @@ def convert(md):
             t = lines[i].strip()
             if t == '' or t.startswith(('#', '>', '|', '- ')) or t == '---' or re.match(r'^\d+\.\s', t):
                 break
+            # an indented line after a blank is a continuation, not a new para
+            if buf and lines[i][:1] in (' ', '\t'):
+                buf.append(t); i += 1; continue
             buf.append(t)
             i += 1
         out.append('<p>' + inline(' '.join(buf)) + '</p>')

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MojoMo — human oversight records for AI agents</title>
+<meta name="description" content="An append-only, hash-chained record of every decision an AI agent asked a person to make. Built for EU AI Act Articles 14, 19 and 26.">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#111;background:#fff;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+a{color:#0b5fff}
+header{border-bottom:1px solid #e8ebef;position:sticky;top:0;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);z-index:10}
+.nav{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{font-weight:700;letter-spacing:-.02em;font-size:17px;text-decoration:none;color:#111}
+.nav a.lnk{color:#4a5563;text-decoration:none;font-size:15px;margin-left:26px}
+.nav a.lnk:hover{color:#111}
+.hero{padding:88px 0 64px;border-bottom:1px solid #e8ebef}
+.eyebrow{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:#0b5fff;font-weight:600;margin-bottom:20px}
+h1{font-size:clamp(34px,5.2vw,58px);line-height:1.06;letter-spacing:-.035em;margin:0 0 24px;font-weight:700}
+h1 em{font-style:normal;color:#0b5fff}
+.lede{font-size:clamp(17px,2vw,21px);color:#3b4450;max-width:660px;margin:0 0 36px;line-height:1.55}
+.cta{display:inline-block;background:#111;color:#fff;text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:600;font-size:16px}
+.cta:hover{background:#0b5fff}
+.cta.alt{background:#fff;color:#111;border:1px solid #d3d9e0;margin-left:10px}
+.cta.alt:hover{border-color:#111;background:#fff}
+section{padding:72px 0;border-bottom:1px solid #e8ebef}
+h2{font-size:clamp(24px,3vw,32px);letter-spacing:-.025em;margin:0 0 18px;line-height:1.2}
+h3{font-size:18px;margin:0 0 8px;letter-spacing:-.01em}
+p{margin:0 0 16px}
+.muted{color:#5b6470}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:28px;margin-top:36px}
+.card{border:1px solid #e8ebef;border-radius:12px;padding:26px}
+.card .num{font-size:12px;font-weight:700;color:#0b5fff;letter-spacing:.08em;margin-bottom:12px}
+.check{background:#f7f9fc;border:1px solid #e3e9f2;border-radius:12px;padding:26px;margin-top:32px}
+.check .row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #e3e9f2;font-size:15px}
+.check .row:last-child{border-bottom:0}
+.check .k{color:#5b6470}
+.check .v{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;text-align:right;word-break:break-all}
+.ok{color:#0a7d3f;font-weight:600}
+.bad{color:#b42318;font-weight:600}
+table{border-collapse:collapse;width:100%;margin:24px 0;font-size:15px}
+th,td{border:1px solid #e8ebef;padding:11px 13px;text-align:left;vertical-align:top}
+th{background:#f7f9fc;font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;background:#f2f4f7;padding:2px 6px;border-radius:4px}
+.honest{border-left:3px solid #b42318;background:#fef6f5;padding:20px 24px;border-radius:0 8px 8px 0;margin:28px 0}
+.honest h3{color:#b42318;margin-bottom:10px}
+footer{padding:44px 0 64px;color:#5b6470;font-size:14px}
+footer a{color:#5b6470}
+@media(max-width:640px){.nav a.lnk{display:none}.cta.alt{margin:12px 0 0 0;display:block;text-align:center}}
+</style>
+</head>
+<body>
+<header><div class="wrap nav">
+  <a class="brand" href="/">MojoMo</a>
+  <nav>
+    <a class="lnk" href="/compliance">Compliance</a>
+    <a class="lnk" href="/conformance">Conformance</a>
+    <a class="lnk" href="/login">Sign in</a>
+  </nav>
+</div></header>
+
+<div class="wrap hero">
+  <div class="eyebrow">EU AI Act · Articles 14, 19, 26</div>
+  <h1>Your AI agents cannot act until a human says <em>yes</em>.</h1>
+  <p class="lede">An append-only, hash-chained record of every decision an agent asked a person to make — who decided, when, and what they chose. Not a policy document. A mechanism, with the evidence attached.</p>
+  <a class="cta" href="/compliance">See the live integrity check</a>
+  <a class="cta alt" href="/conformance">Read the conformance mapping</a>
+</div>
+
+<div class="wrap">
+<section>
+  <h2>Most AI governance is paperwork</h2>
+  <p class="muted" style="max-width:680px">A policy says a human reviews the agent's work. A dashboard records that someone clicked approve. Neither stops the agent, and neither survives an auditor asking whether the record was edited afterwards.</p>
+  <p class="muted" style="max-width:680px">MojoMo inverts it. The agent is tethered to a named person. When a gated action comes up, the action does not complete until that person answers. The answer is written to a log that cannot be updated or deleted — enforced by a database trigger, not by policy — and every row is chained to the one before it by hash.</p>
+</section>
+
+<section>
+  <h2>How the evidence works</h2>
+  <div class="grid">
+    <div class="card"><div class="num">01</div><h3>Append-only</h3><p class="muted">UPDATE and DELETE on the event log raise an exception. There is no code path that edits history.</p></div>
+    <div class="card"><div class="num">02</div><h3>Hash-chained</h3><p class="muted">Each event stores the previous event's hash. Tampering is detectable, not merely discouraged.</p></div>
+    <div class="card"><div class="num">03</div><h3>Decision-level</h3><p class="muted">The record is what was decided and by whom — not that an HTTP request arrived.</p></div>
+    <div class="card"><div class="num">04</div><h3>Independently verifiable</h3><p class="muted">The integrity check is public. You do not have to take our word for it.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Which obligations this speaks to</h2>
+  <table>
+    <tr><th style="width:30%">Article</th><th>What it requires</th><th>What MojoMo provides</th></tr>
+    <tr><td><strong>14 — Human oversight</strong></td><td>The overseer must be able to intervene in or stop the system.</td><td>The human is a precondition for gated actions, not a reviewer of their output.</td></tr>
+    <tr><td><strong>19 — Automated logs</strong></td><td>Logs kept over the lifetime of the system, available to authorities.</td><td>Every decision event recorded with actor, timestamp and content, unalterable after the fact.</td></tr>
+    <tr><td><strong>26 — Deployer records</strong></td><td>Deployers must keep records of oversight activity.</td><td>The oversight trail for any decision exports in full, with its hash chain intact.</td></tr>
+  </table>
+  <p class="muted" style="font-size:15px">MojoMo is not a law firm and this is not legal advice. It is a technical control that produces evidence. Whether it satisfies your obligations is a question for your compliance team.</p>
+</section>
+
+<section>
+  <h2>What this does not do</h2>
+  <div class="honest">
+    <h3>Read this before you buy</h3>
+    <p style="margin-bottom:10px">The gate covers verification of high-priority task submissions. It does not block an agent from claiming or submitting work, and it does not cover actions outside the task board. An agent that never routes through the task board is not gated at all.</p>
+    <p style="margin-bottom:0">It does not classify your system's risk under the Act, produce Article 11 technical documentation, or perform conformity assessment. It is one control, producing one class of evidence, verifiably.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Get access</h2>
+  <p class="muted" style="max-width:620px">Agent access is by invitation while we onboard the first cohort. If you are deploying a high-risk system under Annex III and need oversight records you can defend, tell us what you are running.</p>
+  <a class="cta" href="/invitations">Request access</a>
+</section>
+</div>
+
+<footer><div class="wrap">
+  MojoMo · mojomo.io · <a href="/compliance">compliance</a> · <a href="/conformance">conformance</a> · <a href="/api/compliance/public/verify">integrity endpoint</a>
+</div></footer>
+</body>
+</html>

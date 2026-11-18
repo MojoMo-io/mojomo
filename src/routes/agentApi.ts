@@ -604,6 +604,11 @@ function toolGroups(): string {
   return out.join('\n');
 }
 
+/** GET /<indexnow-key>.txt — IndexNow ownership proof for Bing/Yandex. No auth. */
+router.get('/241540fcca3891b244689f53d046ecaa.txt', (req: Request, res: Response) => {
+  res.type('text/plain').send('241540fcca3891b244689f53d046ecaa');
+});
+
 /** GET /llms.txt — plain-text map for LLM crawlers. No auth. */
 router.get('/llms.txt', async (req: Request, res: Response) => {
   intel.recordDiscoveryRead({ surface: 'llms', ip: req.ip, user_agent: req.headers['user-agent'], referer: req.headers.referer });

@@ -3,6 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as tasks from '../services/tasks';
+import * as gate from '../services/gate';
 import * as agents from '../services/agents';
 import * as house from '../services/houseAgents';
 import * as db from '../services/db';
@@ -221,6 +222,18 @@ router.post('/agent/tasks/:id/claim', requireAgent, agentRateLimit, async (req: 
 router.post('/agent/tasks/:id/submit', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
   try {
     const p = SubmitSchema.parse(req.body);
+    const taskRow = await tasks.getTask(String(req.params.id));
+    if (!taskRow) return res.status(404).json({ error: 'Task not found' });
+    await gate.requireGate({
+      agentId: (req as any).agent.id,
+      action: 'task.submit',
+      summary: `Submit work: ${String(taskRow.title).slice(0, 120)}`,
+      detail: `Priority ${taskRow.priority}. Submission:\n${String(p.submission).slice(0, 1500)}`,
+      taskId: taskRow.id,
+      conversationId: taskRow.conversation_id || null,
+      weight: taskRow.priority,
+      urgency: taskRow.priority >= 90 ? 'high' : 'normal',
+    });
     const t = await tasks.submitTask(String(req.params.id), (req as any).agent.id, p.submission, p.meta || {});
     res.json({ ok: true, task: t });
   } catch (e: any) { err(res, e); }
@@ -230,6 +243,18 @@ router.post('/agent/tasks/:id/submit', requireAgent, agentRateLimit, async (req:
 router.post('/agent/tasks/:id/verify', requireAgent, agentRateLimit, async (req: Request, res: Response) => {
   try {
     const p = VerifySchema.parse(req.body);
+    const taskRow = await tasks.getTask(String(req.params.id));
+    if (!taskRow) return res.status(404).json({ error: 'Task not found' });
+    await gate.requireGate({
+      agentId: (req as any).agent.id,
+      action: 'task.verify',
+      summary: `Verify submission: ${String(taskRow.title).slice(0, 120)}`,
+      detail: `Priority ${taskRow.priority}. Verdict: ${p.verdict}.`,
+      taskId: taskRow.id,
+      conversationId: taskRow.conversation_id || null,
+      weight: taskRow.priority,
+      urgency: taskRow.priority >= 90 ? 'high' : 'normal',
+    });
     const t = await tasks.verifyTask(String(req.params.id), (req as any).agent.id, p.verdict, p.note);
     res.json({ ok: true, task: t });
   } catch (e: any) { err(res, e); }

@@ -371,12 +371,6 @@ export async function verifyTask(
   const t = await getTask(taskId);
   if (!t) throw fail('NOT_FOUND', 'Task not found');
   if (t.status !== 'submitted') throw fail('NOT_SUBMITTED', `Task is ${t.status}`);
-  if (t.requires_human_approval && !t.human_approved_at) {
-    throw fail(
-      'AWAITING_HUMAN_APPROVAL',
-      'This submission is above the approval threshold and is waiting on the claimer\'s human.'
-    );
-  }
   if (t.claimer_agent_id === verifierAgentId) throw fail('SELF_VERIFY', 'You cannot verify your own work');
   if (t.poster_agent_id === verifierAgentId) throw fail('POSTER_VERIFY', 'The poster cannot verify; a third agent must');
 

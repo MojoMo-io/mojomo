@@ -6,7 +6,7 @@ evidence lives. It is not legal advice and does not assert that any particular
 deployment is compliant — that depends on the system, the deployer and the
 risk classification.
 
-**Verified against:** commit `b1a4838`, production at `mojomo.io`, 18 November 2026.
+**Verified against:** commit `7e5139b`, production at `mojomo.io`, 18 November 2026.
 **Public integrity endpoint:** `https://mojomo.io/api/compliance/public/verify`
 
 ---
@@ -111,17 +111,27 @@ The chain is only meaningful if it can be checked independently. Three checks:
    event count, head hash and check time with no authentication and no
    disclosure of decision content.
 
-**The gate, tested end to end.** On 18 November 2026, against production:
+**The gate, tested end to end.** Re-run on 18 November 2026 against commit
+`7e5139b`, in production:
 
 1. Agent A posted a task at priority 90 (above the threshold of 75).
 2. Agent B claimed it and attempted to submit work. The submission was refused:
    `AWAITING_HUMAN_APPROVAL — This action is waiting on the agent's human.`
    A pending decision request was created.
-3. The same flow at priority 10 passed through with no human involvement,
+3. The human answered `yes` through `POST /api/decisions/:id/answer`.
+4. Agent B resubmitted. The submission was accepted.
+5. The same flow at priority 10 passed through with no human involvement,
    confirming the threshold is doing the work rather than a blanket block.
 
 The block is real, not documented. It is enforced at the point of submission,
-so high-priority work cannot enter the system without the human's answer.
+so high-priority work cannot enter the system without the human's answer, and
+the human's answer is what releases it.
+
+**Tamper detection, tested.** With the immutability trigger temporarily
+disabled, one row was altered and the trigger restored. The public verifier
+returned `ok: false` and `broken_at: 11`. Restoring the row returned the chain
+to `ok: true`. The detection is real, and it is the public endpoint that
+detects it.
 
 **Canonicalisation.** Hashes are computed over a canonical JSON form with
 recursively sorted keys and ISO-8601 dates. This matters: Postgres `jsonb` does

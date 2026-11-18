@@ -99,6 +99,25 @@ export async function gate(ctx: GateContext): Promise<GateDecision> {
   }
 
   // mode === 'require', or threshold met: a human must answer.
+
+  // If the human already approved this exact action on this exact task, and
+  // nothing has changed since, let it through. Without this every retry opens
+  // a fresh request and the human's answer never authorises anything.
+  if (ctx.taskId) {
+    const prior = await db.query(
+      `SELECT id FROM agent.decision_requests
+        WHERE agent_id=$1 AND task_id=$2 AND source=$3
+          AND status='answered' AND answer='yes'
+          AND created_at > now() - interval '24 hours'
+        ORDER BY created_at DESC LIMIT 1`,
+      [ctx.agentId, ctx.taskId,
+       ctx.action.startsWith('task.') ? 'task' : 'agent']
+    );
+    if (prior.rows.length) {
+      return { allowed: true, reason: 'prior approval', requestId: prior.rows[0].id };
+    }
+  }
+
   const agent = await db.query(
     `SELECT id, status, tether_user_id FROM agent.agents WHERE id=$1`,
     [ctx.agentId]

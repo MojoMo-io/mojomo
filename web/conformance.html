@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EU AI Act conformance mapping — MojoMo</title>
+<meta name="description" content="Technical mapping of MojoMo's decision event log to EU AI Act Articles 14, 19 and 26.">
+<style>
+body{margin:0;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#111}
+.wrap{max-width:820px;margin:0 auto;padding:0 24px}
+header{border-bottom:1px solid #e3e6ea;padding:18px 0;margin-bottom:40px}
+header a{color:#111;text-decoration:none;font-weight:700}
+h1{font-size:32px;letter-spacing:-.03em;line-height:1.2;margin:0 0 24px}
+h2{font-size:21px;letter-spacing:-.02em;margin:44px 0 12px;padding-top:8px;border-top:1px solid #eef0f3}
+blockquote{margin:0 0 16px;padding:12px 16px;border-left:3px solid #0b5fff;background:#f7f9fc;color:#3b4450;font-size:15px}
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14px}
+th,td{border:1px solid #e3e6ea;padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#f6f8fa;font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:#f6f8fa;padding:1px 5px;border-radius:4px}
+hr{border:0;border-top:1px solid #eef0f3;margin:32px 0}
+footer{border-top:1px solid #e3e6ea;margin-top:56px;padding:24px 0 48px;color:#5b6470;font-size:14px}
+</style></head><body>
+<header><div class="wrap"><a href="/compliance">MojoMo · oversight records</a></div></header>
+<main class="wrap"><h1>EU AI Act — technical conformance mapping</h1>
+
+<p><strong>Scope.</strong> This maps MojoMo&#x27;s decision event log to three obligations in</p>
+<p>Regulation (EU) 2024/1689. It describes what the system does and where the</p>
+<p>evidence lives. It is not legal advice and does not assert that any particular</p>
+<p>deployment is compliant — that depends on the system, the deployer and the</p>
+<p>risk classification.</p>
+
+<p><strong>Verified against:</strong> commit <code>ef502b2</code>, production at <code>mojomo.io</code>.</p>
+<p><strong>Public integrity endpoint:</strong> <code>https://mojomo.io/api/compliance/public/verify</code></p>
+
+<hr>
+
+<h2>Article 14 — Human oversight</h2>
+
+<blockquote>Art 14(1): high-risk AI systems shall be designed so that they can be</blockquote>
+<blockquote>effectively overseen by natural persons.</blockquote>
+<blockquote>Art 14(4)(d): the overseer must be able to decide not to use the system or</blockquote>
+<blockquote>otherwise disregard, override or reverse its output.</blockquote>
+<blockquote>Art 14(4)(e): the overseer must be able to intervene in the operation of the</blockquote>
+<blockquote>system or stop it.</blockquote>
+
+<p><strong>What MojoMo does.</strong> An agent tethered to a human cannot complete a gated</p>
+<p>action until that human answers a decision request. The gate is enforced in the</p>
+<p>application, not by policy: the action is blocked at the point of execution.</p>
+
+<p><strong>Where the evidence is.</strong></p>
+
+<table>
+<tr><th>Obligation</th><th>Mechanism</th><th>Evidence</th></tr>
+</table>
+<p>|---|---|---|</p>
+<table>
+<tr><th>14(1) effective oversight</th><th>Tethering: agent has no valid action path without a named human</th><th>`agent.agents.tether_user_id` NOT NULL for active agents</th></tr>
+<tr><td>14(4)(d) override / disregard</td><td>Human answers `no`; the gated task is not approved</td><td>`agent.decision_requests.answer`, `agent.tasks.human_approved_at`</td></tr>
+<tr><td>14(4)(e) intervene / stop</td><td>Human can withdraw or decline; agent key can be revoked</td><td>`agent.decision_events` event=`withdrawn`; `agent.api_keys.revoked_at`</td></tr>
+</table>
+
+<p><strong>Limitation.</strong> MojoMo gates actions the agent routes through the decision API.</p>
+<p>It cannot stop an agent that bypasses the API entirely. The control is only as</p>
+<p>strong as the integration.</p>
+
+<hr>
+
+<h2>Article 19 — Automatically generated logs</h2>
+
+<blockquote>Art 19: providers shall keep automatically generated logs over the lifetime</blockquote>
+<blockquote>of the system, retained for a period appropriate to the intended purpose, and</blockquote>
+<blockquote>make them available to competent authorities on request.</blockquote>
+
+<p><strong>What MojoMo does.</strong> Every decision event is written to</p>
+<p><code>agent.decision_events</code> at the moment it occurs, by the service, without human</p>
+<p>action. The table is append-only.</p>
+
+<p><strong>Where the evidence is.</strong></p>
+
+<table>
+<tr><th>Requirement</th><th>Mechanism</th><th>Evidence</th></tr>
+</table>
+<p>|---|---|---|</p>
+<table>
+<tr><th>Automatically generated</th><th>Written by `decisionEvents.record()` inside the service</th><th>`src/services/decisionEvents.ts`</th></tr>
+<tr><td>Lifetime of the system</td><td>No expiry, no rotation, no purge</td><td>table has no TTL</td></tr>
+<tr><td>Retained</td><td>Rows cannot be deleted</td><td>`BEFORE UPDATE OR DELETE` trigger raises</td></tr>
+<tr><td>Available to authorities</td><td>Admin export endpoint</td><td>`GET /api/compliance/decision/:id`</td></tr>
+<tr><td>Integrity</td><td>Hash chain</td><td>`prev_hash` + `row_hash` per row</td></tr>
+</table>
+
+<p><strong>What is logged.</strong> Event type (<code>created</code>, <code>notified</code>, <code>answered</code>, <code>expired</code>,</p>
+<p><code>withdrawn</code>), the agent, the human, the actor class, a canonical JSON detail</p>
+<p>payload, and a timestamp.</p>
+
+<p><strong>Limitation.</strong> Retention period is not configurable per deployment. There is</p>
+<p>no automated export to a customer&#x27;s own storage. Both are straightforward to</p>
+<p>add and are not present today.</p>
+
+<hr>
+
+<h2>Article 26 — Obligations of deployers</h2>
+
+<blockquote>Art 26(1): deployers shall implement human oversight according to the</blockquote>
+<blockquote>instructions of use.</blockquote>
+<blockquote>Art 26(6): deployers shall keep the logs automatically generated by the</blockquote>
+<blockquote>high-risk AI system for a period appropriate to the intended purpose.</blockquote>
+
+<p><strong>What MojoMo does.</strong> The deployer is the organisation whose human is tethered</p>
+<p>to the agent. Their oversight activity — every decision they made and when — is</p>
+<p>recorded automatically and can be exported per decision.</p>
+
+<p><strong>Where the evidence is.</strong></p>
+
+<table>
+<tr><th>Requirement</th><th>Mechanism</th><th>Evidence</th></tr>
+</table>
+<p>|---|---|---|</p>
+<table>
+<tr><th>Oversight implemented</th><th>Human is a precondition for gated actions</th><th>`agent.decision_requests`</th></tr>
+<tr><td>Logs kept</td><td>Append-only table, no deletion path</td><td>trigger + `detail_canonical`</td></tr>
+<tr><td>Records of oversight activity</td><td>Per-decision trail with actor and timestamp</td><td>`GET /api/compliance/decision/:id`</td></tr>
+</table>
+
+<hr>
+
+<h2>How the integrity claim is verified</h2>
+
+<p>The chain is only meaningful if it can be checked independently. Three checks:</p>
+
+<p>1. <strong>Append-only.</strong> <code>UPDATE</code> and <code>DELETE</code> on <code>agent.decision_events</code> raise</p>
+<p>   <code>agent.decision_events is append-only</code>. Verified by attempting both.</p>
+<p>2. <strong>Tamper detection.</strong> Dropping the trigger, altering a row and restoring the</p>
+<p>   trigger causes <code>verifyChain()</code> to report <code>brokenAt</code> at the altered row.</p>
+<p>   Verified against production data.</p>
+<p>3. <strong>Public verification.</strong> <code>GET /api/compliance/public/verify</code> returns the</p>
+<p>   event count, head hash and check time with no authentication and no</p>
+<p>   disclosure of decision content.</p>
+
+<p><strong>Canonicalisation.</strong> Hashes are computed over a canonical JSON form with</p>
+<p>recursively sorted keys and ISO-8601 dates. This matters: Postgres <code>jsonb</code> does</p>
+<p>not preserve key order, and a <code>Date</code> serialises differently as a live object</p>
+<p>than as a stored string. Both were bugs found and fixed during development; the</p>
+<p>stored <code>detail_canonical</code> column holds the exact string that was hashed.</p>
+
+<hr>
+
+<h2>What this does not do</h2>
+
+<li>It does not classify a system&#x27;s risk under the Act.</li>
+<li>It does not produce the technical documentation required by Art 11.</li>
+<li>It does not perform conformity assessment or CE marking.</li>
+<li>It does not cover Art 12 (record-keeping by design) beyond the decision log.</li>
+<li>It does not stop an agent that bypasses the decision API.</li>
+
+<p>It is one control, producing one class of evidence, verifiably.</p>
+</main>
+<footer><div class="wrap">MojoMo · <a href="/compliance">compliance</a> · <a href="/api/compliance/public/verify">integrity endpoint</a></div></footer>
+</body></html>

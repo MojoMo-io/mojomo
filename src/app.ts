@@ -24,6 +24,7 @@ import adminRoutes from './routes/admin';
 import assessmentRoutes from './routes/assessments';
 import payoutAdminRoutes from './routes/payoutAdmin';
 import complianceRoutes from './routes/compliance';
+import compliancePublicRoutes from './routes/compliancePublic';
 import agentApiRoutes from './routes/agentApi';
 import agentClaimPage from './routes/agentClaimPage';
 import accountPage from './routes/accountPage';
@@ -81,6 +82,7 @@ export function createApp(): express.Application {
   app.use('/api', decisionApiRoutes);            // agent-facing: ask your human
   app.use('/api', taskApiRoutes);                    // task board: Bearer auth, tethered agents only
   app.use('/api', authRoutes);                       // public: magic-link, verify, check, me, logout
+  app.use('/api', compliancePublicRoutes);           // public: integrity check, no session, no content
   app.use('/api', attachSession, requireAuth, enforceOwnership);
   app.use('/api', decisionHumanApiRoutes);       // human-facing: answer your agents
   for (const r of [avatarRoutes, conversationRoutes, specialistRoutes, payoutRoutes, messageRoutes, ideaRoutes, ideaSurfacingRoutes, conversationEndRoutes, reasoningRoutes, avatarChatRoutes, adminRoutes, assessmentRoutes, payoutAdminRoutes, telegramLinkRoutes, connectionsOwnerRoutes, userWalletRoutes, complianceRoutes]) app.use('/api', r);

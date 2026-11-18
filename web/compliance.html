@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MojoMo — Human Oversight Records for AI Agents</title>
+<meta name="description" content="An append-only, hash-chained record of every decision an AI agent asked a human to make. Evidence for EU AI Act Article 14, 19 and 26.">
+<style>
+  :root { --ink:#111; --muted:#5b6470; --line:#e3e6ea; --bg:#fff; --accent:#0b5fff; --ok:#0a7d3f; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); background:var(--bg); }
+  .wrap { max-width:760px; margin:0 auto; padding:0 24px; }
+  header { border-bottom:1px solid var(--line); padding:20px 0; }
+  header .wrap { display:flex; align-items:center; justify-content:space-between; }
+  .brand { font-weight:700; letter-spacing:-.02em; font-size:18px; }
+  .brand span { color:var(--muted); font-weight:400; }
+  h1 { font-size:38px; line-height:1.15; letter-spacing:-.03em; margin:56px 0 16px; }
+  h2 { font-size:22px; letter-spacing:-.02em; margin:48px 0 12px; }
+  .lede { font-size:19px; color:var(--muted); margin:0 0 32px; }
+  p { margin:0 0 16px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:20px 22px; margin:24px 0; }
+  .card h3 { margin:0 0 8px; font-size:16px; }
+  .card p { margin:0; color:var(--muted); font-size:15px; }
+  code, .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+  .hash { background:#f6f8fa; border:1px solid var(--line); border-radius:6px; padding:10px 12px; word-break:break-all; color:var(--muted); }
+  .status { display:inline-flex; align-items:center; gap:8px; font-weight:600; font-size:15px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#c9ced6; }
+  .dot.ok { background:var(--ok); }
+  .dot.bad { background:#c0392b; }
+  ul { padding-left:20px; } li { margin:0 0 8px; }
+  .cta { display:inline-block; background:var(--ink); color:#fff; text-decoration:none; padding:12px 20px; border-radius:8px; font-weight:600; margin:8px 8px 8px 0; }
+  .cta.alt { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  footer { border-top:1px solid var(--line); margin-top:64px; padding:24px 0 48px; color:var(--muted); font-size:14px; }
+  .small { font-size:14px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="brand">MojoMo <span>· oversight records</span></div>
+  <a class="cta alt" href="/login">Sign in</a>
+</div></header>
+
+<main class="wrap">
+  <h1>Your AI agents cannot act until a human says yes. Here is the proof.</h1>
+  <p class="lede">An append-only, hash-chained record of every decision an agent asked a person to make — who decided, when, and what they chose. Built for EU AI Act Article 14, 19 and 26.</p>
+
+  <div class="card">
+    <h3>Live integrity check</h3>
+    <p style="margin-bottom:12px">This is the production log, checked right now. No login required.</p>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Checking…</span></div>
+    <div class="hash mono" id="hashBox" style="margin-top:12px">—</div>
+    <p class="small" id="meta" style="margin-top:10px"></p>
+  </div>
+
+  <h2>What this is</h2>
+  <p>Most AI governance is paperwork. A policy says a human reviews the agent's work; a dashboard records that someone clicked approve. Neither stops the agent, and neither survives an auditor asking whether the record was edited afterwards.</p>
+  <p>MojoMo inverts it. An agent tethered to a person <strong>cannot complete a gated action</strong> until that person answers. The answer is written to a log that cannot be updated or deleted — enforced by a database trigger, not by policy — and every row is chained to the one before it by hash. Alter any row and the chain breaks from that point forward.</p>
+
+  <h2>How the evidence works</h2>
+  <ul>
+    <li><strong>Append-only.</strong> <code>UPDATE</code> and <code>DELETE</code> on the event log raise an exception. There is no code path that edits history.</li>
+    <li><strong>Hash-chained.</strong> Each event stores the previous event's hash. Tampering is detectable, not merely discouraged.</li>
+    <li><strong>Decision-level.</strong> The record is what was decided and by whom — not that an HTTP request arrived.</li>
+    <li><strong>Independently verifiable.</strong> The check above is public. You do not have to take our word for it.</li>
+  </ul>
+
+  <h2>Which obligations this speaks to</h2>
+  <div class="card">
+    <h3>Article 14 — Human oversight</h3>
+    <p>The overseer must be able to intervene in or stop the system. Here the human is not a reviewer of the agent's output; they are a precondition for it. The action does not happen without them.</p>
+  </div>
+  <div class="card">
+    <h3>Article 19 — Automatically generated logs</h3>
+    <p>Logs kept over the lifetime of the system, retained and available to authorities. Every decision event is recorded with actor, timestamp and content, and cannot be altered after the fact.</p>
+  </div>
+  <div class="card">
+    <h3>Article 26 — Deployer record-keeping</h3>
+    <p>Deployers must keep records of oversight activity. The oversight trail for any single decision can be exported in full, with its hash chain intact.</p>
+  </div>
+
+  <p class="small" style="margin-top:24px">MojoMo is not a law firm and this is not legal advice. It is a technical control that produces evidence. Whether it satisfies your obligations is a question for your compliance team.</p>
+
+  <h2>Get access</h2>
+  <p>Agent access is by invitation while we onboard the first cohort.</p>
+  <a class="cta" href="/login">Request access</a>
+  <a class="cta alt" href="/conformance">Conformance mapping</a>
+  <a class="cta alt" href="/api/compliance/public/verify">Raw verification JSON</a>
+</main>
+
+<footer><div class="wrap">
+  MojoMo · <a href="/">mojomo.io</a> · <a href="/api/compliance/public/verify">integrity endpoint</a>
+</div></footer>
+
+<script>
+(async function () {
+  const dot = document.getElementById('dot');
+  const statusText = document.getElementById('statusText');
+  const hashBox = document.getElementById('hashBox');
+  const meta = document.getElementById('meta');
+  try {
+    const r = await fetch('/api/compliance/public/verify', { headers: { 'Accept': 'application/json' } });
+    const d = await r.json();
+    if (d.ok) {
+      dot.className = 'dot ok';
+      statusText.textContent = 'Chain intact — ' + d.events + ' event' + (d.events === 1 ? '' : 's') + ' verified';
+    } else {
+      dot.className = 'dot bad';
+      statusText.textContent = 'Chain broken at event ' + d.broken_at;
+    }
+    hashBox.textContent = d.head_hash ? ('head ' + d.head_hash) : 'No events recorded yet.';
+    meta.textContent = 'Checked ' + new Date(d.checked_at).toUTCString();
+  } catch (e) {
+    dot.className = 'dot bad';
+    statusText.textContent = 'Verification unavailable';
+    hashBox.textContent = '—';
+  }
+})();
+</script>
+</body>
+</html>
